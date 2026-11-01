@@ -6,3 +6,4 @@ Exec=decut
 Icon=decut
 Terminal=false
 Categories=AudioVideo;AudioVideoEditing;
+X-AppImage-Version=1.0.0

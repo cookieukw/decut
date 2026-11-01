@@ -18,6 +18,9 @@ if [[ ! -x "$PYTHON" ]]; then
   exit 1
 fi
 
+VERSION="$("$PYTHON" -c 'from app_version import __version__; print(__version__)')"
+export VERSION
+
 "$PYTHON" -m pip install --upgrade pyinstaller
 rm -rf build dist AppDir "${APP}.AppImage"
 "$PYTHON" -m PyInstaller --noconfirm --clean decut.spec
@@ -62,4 +65,4 @@ if [[ ! -x "$LINUXDEPLOY" ]]; then
 fi
 "$LINUXDEPLOY" --appdir AppDir --output appimage
 mv ./*.AppImage "${APP}.AppImage"
-echo "Built ${APP}.AppImage"
+echo "Built ${APP}.AppImage (version ${VERSION})"

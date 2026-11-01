@@ -11,4 +11,11 @@
   <categories><category>AudioVideo</category><category>AudioVideoEditing</category></categories>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
+  <releases>
+    <release version="1.0.0" date="2026-11-01">
+      <description>
+        <p>Review synchronized silence cuts with manual noise sampling, linear waveforms, protected regions, timeline compaction and export statistics.</p>
+      </description>
+    </release>
+  </releases>
 </component>
