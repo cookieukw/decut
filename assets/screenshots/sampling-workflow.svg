@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="232" viewBox="0 0 1120 232" role="img" aria-labelledby="title desc">
+  <title id="title">Four explicit actions, from sampling to applying cuts</title>
+  <desc id="desc">Moving the needle does not analyze. Sample here measures noise and changes a setting only. Recalculate replaces automatic proposals. Apply commits only the reviewed checked cuts.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1 L6 4 L1 7" fill="none" stroke="#8c9f92" stroke-width="1.5"/></marker>
+  </defs>
+  <rect width="1120" height="232" rx="10" fill="#151817"/>
+  <g font-family="IBM Plex Sans, DejaVu Sans, sans-serif">
+    <text x="22" y="33" fill="#e1e9e3" font-size="18" font-weight="600">You decide when each step runs</text>
+    <g fill="#202923" stroke="#3a4b40">
+      <rect x="20" y="55" width="250" height="122" rx="6"/>
+      <rect x="296" y="55" width="250" height="122" rx="6"/>
+      <rect x="572" y="55" width="250" height="122" rx="6"/>
+      <rect x="848" y="55" width="250" height="122" rx="6"/>
+    </g>
+    <g fill="#e3b76c" font-size="12" font-weight="600">
+      <text x="35" y="81">01 · POSITION</text>
+      <text x="311" y="81">02 · MEASURE</text>
+      <text x="587" y="81">03 · ANALYZE</text>
+      <text x="863" y="81">04 · CONFIRM</text>
+    </g>
+    <g fill="#dce9df" font-size="17" font-weight="600">
+      <text x="35" y="109">Move the needle</text>
+      <text x="311" y="109">Sample here</text>
+      <text x="587" y="109">Recalculate preview</text>
+      <text x="863" y="109">Apply reviewed cuts</text>
+    </g>
+    <g fill="#a6b7ab" font-size="13">
+      <text x="35" y="139">No analysis.</text><text x="35" y="159">No new cuts.</text>
+      <text x="311" y="139">Measures the sample.</text><text x="311" y="159">Updates the threshold only.</text>
+      <text x="587" y="139">Replaces automatic proposals.</text><text x="587" y="159">Keeps manual protection.</text>
+      <text x="863" y="139">Commits checked cuts.</text><text x="863" y="159">Source media stays untouched.</text>
+    </g>
+    <g stroke="#8c9f92" stroke-width="1.5" marker-end="url(#arrow)">
+      <path d="M275 118 H290"/><path d="M551 118 H566"/><path d="M827 118 H842"/>
+    </g>
+    <text x="22" y="209" fill="#b3d795" font-size="14">The amber sample window is not a cut. Only the checked red proposals are removed.</text>
+  </g>
+</svg>

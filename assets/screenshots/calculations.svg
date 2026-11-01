@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="378" viewBox="0 0 1120 378" role="img" aria-labelledby="title desc">
+  <title id="title">Real calibration and time-reduction calculations</title>
+  <desc id="desc">The sample peak is minus 50.8 dB. Adding 3 dB and rounding upward gives a minus 47 dB threshold. Three reviewed cuts shorten the 60-second example to 57.517 seconds, saving 2.483 seconds or approximately 4.1 percent.</desc>
+  <rect width="1120" height="378" rx="10" fill="#151817"/>
+  <g font-family="IBM Plex Sans, DejaVu Sans, sans-serif">
+    <text x="26" y="35" fill="#e1e9e3" font-size="18" font-weight="600">Measured values from the 60-second example</text>
+    <text x="26" y="73" fill="#e3b76c" font-size="13" font-weight="600">NOISE CALIBRATION</text>
+    <g fill="#a5b5aa" font-size="13">
+      <text x="26" y="102">Measured peak</text><text x="280" y="102">Headroom</text>
+      <text x="493" y="102">Unrounded value</text><text x="799" y="102">Suggested threshold</text>
+    </g>
+    <g fill="#dce9df" font-size="30" font-weight="500">
+      <text x="26" y="141">−50.8 dB</text><text x="280" y="141">+ 3 dB</text>
+      <text x="493" y="141">= −47.8 dB</text><text x="799" y="141" fill="#b3d795">−47 dB</text>
+    </g>
+    <path d="M730 129 H773 M765 123 L773 129 L765 135" fill="none" stroke="#8c9f92" stroke-width="1.5"/>
+    <text x="799" y="164" fill="#a5b5aa" font-size="12">Rounded upward; not a speech model.</text>
+    <path d="M26 187 H1092" stroke="#354339"/>
+    <text x="26" y="218" fill="#b3d795" font-size="13" font-weight="600">AFTER REVIEWING AND APPLYING 3 CUTS</text>
+    <g fill="#a5b5aa" font-size="13">
+      <text x="26" y="249">Original duration</text><text x="280" y="249">Resulting duration</text>
+      <text x="555" y="249">Time removed</text><text x="799" y="249">Reduction</text>
+    </g>
+    <g fill="#dce9df" font-size="30" font-weight="500">
+      <text x="26" y="288">60.000 s</text><text x="280" y="288">− 57.517 s</text>
+      <text x="555" y="288">= 2.483 s</text><text x="799" y="288" fill="#b3d795">≈ 4.1%</text>
+    </g>
+    <text x="799" y="313" fill="#a5b5aa" font-size="12">2.483 ÷ 60 × 100</text>
+    <text x="26" y="352" fill="#a5b5aa" font-size="13">Savings count once for the timeline, not once per linked track. Displayed values are rounded.</text>
+  </g>
+</svg>
