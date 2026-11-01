@@ -15,6 +15,7 @@ AppDir/
 *.AppImage
 .cache/
 *.spec
+!decut.spec
 
 # Generated analysis/export files
 silences.json
