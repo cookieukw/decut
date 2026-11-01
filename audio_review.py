@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from audio_tools import measure_noise, sample_window, waveform_peaks
 from media_process import JobControl, AnalysisCancelled
+from noise_matching import learn_profile, find_similar_pauses, merge_intervals
 
 
 def tc(value):
@@ -237,6 +238,9 @@ class AudioReviewDialog(QDialog):
         self.cuts, self.audio, self.cache, self.wave_cache = {}, {}, {}, {}
         self.review_rows = {}
         self.protected_ranges = {}
+        self.noise_profiles = {}
+        self.incremental_cuts = {}
+        self.match_cache = {}
         self.output, self.counts, self.job = None, {}, None
         self._busy = False
         self._dirty = False
@@ -272,6 +276,28 @@ class AudioReviewDialog(QDialog):
         self.fit_btn = QPushButton(self.tr_text("Enquadrar", "Fit waveform"))
         top.addWidget(self.fit_btn)
         layout.addLayout(top)
+        modes = QHBoxLayout()
+        self.mode = QComboBox()
+        self.mode.addItem(self.tr_text("Limiar de volume (atual)", "Volume threshold (existing)"), "threshold")
+        self.mode.addItem(self.tr_text("Amostras semelhantes (incremental)", "Similar samples (incremental)"), "samples")
+        self.mode.setToolTip(self.tr_text(
+            "Limiar substitui propostas. Amostras acumula regiões com nível e textura semelhantes ao ruído medido. Não reconhece palavras.",
+            "Threshold replaces proposals. Samples accumulates regions with similar measured noise level and texture. Does not recognize words."))
+        self.similarity = QComboBox()
+        self.similarity.addItem(self.tr_text("Mais precisa", "More precise"), .7)
+        self.similarity.addItem(self.tr_text("Equilibrada", "Balanced"), 1.0)
+        self.similarity.addItem(self.tr_text("Mais ampla", "Broader"), 1.3)
+        self.similarity.setCurrentIndex(1)
+        self.similarity.setEnabled(False)
+        self.profile_count = QLabel()
+        self.reset_samples_btn = QPushButton(self.tr_text("Limpar amostras e propostas", "Clear samples and proposals"))
+        self.reset_samples_btn.setEnabled(False)
+        modes.addWidget(QLabel(self.tr_text("Modo", "Mode")))
+        modes.addWidget(self.mode, 1)
+        modes.addWidget(self.similarity)
+        modes.addWidget(self.profile_count)
+        modes.addWidget(self.reset_samples_btn)
+        layout.addLayout(modes)
         self.wave = SamplingWaveform()
         self.visual_gain.valueChanged.connect(self.wave.set_display_gain)
         splitter = QSplitter(Qt.Vertical)
@@ -376,6 +402,9 @@ class AudioReviewDialog(QDialog):
         self.clear_needle_btn.clicked.connect(self.wave.clear_selection)
         self.preserve_btn.clicked.connect(self.preserve_selection)
         self.recalculate.clicked.connect(self.refresh)
+        self.mode.currentIndexChanged.connect(self.mode_changed)
+        self.similarity.currentIndexChanged.connect(self.invalidate)
+        self.reset_samples_btn.clicked.connect(self.reset_samples)
         self.cancel_btn.clicked.connect(self.reject)
         self.apply_btn.clicked.connect(self.apply_review)
         self.threshold.valueChanged.connect(self.invalidate)
@@ -389,10 +418,14 @@ class AudioReviewDialog(QDialog):
 
     def set_busy(self, busy):
         self._busy = busy
-        for widget in (self.reference, self.recalculate, self.sample_btn,
+        for widget in (self.reference, self.recalculate, self.sample_btn, self.mode,
                        self.threshold, self.minimum, self.padding, self.position, self.window,
                        self.intervals, self.wave):
             widget.setEnabled(not busy)
+        samples_mode = self.mode.currentData() == "samples"
+        self.threshold.setEnabled(not busy and not samples_mode)
+        self.similarity.setEnabled(not busy and samples_mode)
+        self.reset_samples_btn.setEnabled(not busy and samples_mode)
         self.cancel_btn.setEnabled(not self._closing)
         for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
             button.setEnabled(not busy and self.wave.has_selection)
@@ -435,6 +468,7 @@ class AudioReviewDialog(QDialog):
             "waveform": self.tr_text("Gerando waveform do clipe", "Generating clip waveform"),
             "sample": self.tr_text("Medindo amostra", "Measuring sample"),
             "apply": self.tr_text("Aplicando cortes", "Applying cuts"),
+            "matching": self.tr_text("Buscando ruídos semelhantes", "Finding similar noise"),
         }
         text = stages.get(self._stage, self._stage)
         self.progress_text.setText(f"{text} · {self.elapsed.elapsed() / 1000:.0f}s")
@@ -469,17 +503,86 @@ class AudioReviewDialog(QDialog):
         self.apply_btn.setEnabled(False)
         self.summary.setText(self.tr_text("Configurações alteradas. Recalcule a prévia.", "Settings changed. Recalculate the preview."))
 
+    def mode_changed(self):
+        self.invalidate()
+        self.set_busy(False)
+        if self.mode.currentData() == "samples":
+            self.hint.setText(self.tr_text(
+                "Meça um ruído sem fala e clique em Recalcular prévia para acumular trechos parecidos. Nada é removido antes de aplicar.",
+                "Sample noise without speech, then click Recalculate preview to accumulate similar regions. Nothing is removed before Apply."))
+        else:
+            self.hint.setText(self.tr_text(
+                "Posicione a agulha, clique em Medir aqui e depois em Recalcular prévia. Mover a agulha não calcula nem cria cortes.",
+                "Position the needle, click Sample here, then Recalculate preview. Moving the needle does not analyze or create cuts."))
+        self.update_profile_count()
+
+    def update_profile_count(self):
+        count = len(self.noise_profiles.get(self.group(), []))
+        self.profile_count.setText(self.tr_text(
+            f"{count} amostra" if count == 1 else f"{count} amostras",
+            f"{count} sample" if count == 1 else f"{count} samples"))
+
+    def reset_samples(self):
+        if self._busy:
+            return
+        group = self.group()
+        self.noise_profiles[group] = []
+        self.incremental_cuts[group] = []
+        self.cuts[group] = []
+        self.review_rows[group] = []
+        self.match_cache.clear()
+        self.clear_pending_sample()
+        self.load_intervals()
+        self.update_profile_count()
+        self.invalidate()
+
     def refresh(self):
         if self._busy or not self.reference.count():
             return
+        mode = self.mode.currentData()
+        if mode == "samples" and not any(self.noise_profiles.values()):
+            self.summary.setText(self.tr_text(
+                "Adicione uma amostra com Medir aqui antes de buscar trechos semelhantes.",
+                "Add a sample with Sample here before searching for similar regions."))
+            self.apply_btn.setEnabled(False)
+            return
         self.thresholds[self.group()] = self.threshold.value()
         thresholds = dict(self.thresholds)
+        profiles = copy.deepcopy(self.noise_profiles)
+        accumulated = copy.deepcopy(self.incremental_cuts)
+        tolerance = self.similarity.currentData()
         minimum, padding = self.minimum.value(), self.padding.value() / 1000
         self.summary.setText(self.tr_text("Analisando e gerando waveform…", "Analyzing and generating waveform…"))
 
         def prepare(control):
+            source_windows = {}
+            if mode == "samples":
+                for entry in self.assignments:
+                    if not entry["analyze"] or not entry["group"]:
+                        continue
+                    for child in self.timeline.tracks[entry["index"]]:
+                        if isinstance(child, otio.schema.Clip):
+                            start = child.trimmed_range().start_time.to_seconds()
+                            key = (entry["group"], self.media_path(child))
+                            source_windows.setdefault(key, []).append((start, start + child.duration().to_seconds()))
+                source_windows = {key: merge_intervals(ranges) for key, ranges in source_windows.items()}
+
+            def provider(group, path, minimum, control):
+                refs = tuple(profiles.get(group, []))
+                if not refs:
+                    return []
+                ranges = tuple(source_windows.get((group, path), []))
+                key = (group, path, refs, minimum, tolerance, ranges)
+                if key not in self.match_cache:
+                    self.match_cache[key] = find_similar_pauses(path, refs, minimum, tolerance, control, ranges)
+                return self.match_cache[key]
+
+            kwargs = {"interval_provider": provider} if mode == "samples" else {}
             cuts = self.collect_cuts(self.timeline, self.assignments, self.default_threshold,
-                                     minimum, padding, thresholds, self.cache, control=control)
+                                     minimum, padding, thresholds, self.cache, control=control, **kwargs)
+            if mode == "samples":
+                cuts = {group: merge_intervals(accumulated.get(group, []) + ranges)
+                        for group, ranges in cuts.items()}
             audio = {}
             for entry in self.assignments:
                 control.check()
@@ -508,6 +611,8 @@ class AudioReviewDialog(QDialog):
     def preview_ready(self, data):
         self._dirty = False
         self.cuts, self.audio = data
+        if self.mode.currentData() == "samples":
+            self.incremental_cuts = copy.deepcopy(self.cuts)
         self.review_rows = {}
         for group, cuts in self.cuts.items():
             protected = self.protected_ranges.get(group, [])
@@ -537,6 +642,7 @@ class AudioReviewDialog(QDialog):
         for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
             button.setEnabled(not self._busy and self.wave.has_selection)
         self.load_intervals()
+        self.update_profile_count()
 
     def load_intervals(self):
         self.intervals.blockSignals(True)
@@ -662,20 +768,31 @@ class AudioReviewDialog(QDialog):
             return
         source_start = segment["source_start"] + start - segment["start"]
         self.measurement.setText(self.tr_text("Medindo a amostra…", "Measuring sample…"))
-        self.start_job(lambda control: measure_noise(segment["path"], source_start, duration, control),
-                       lambda sample: self.sample_ready(sample, group, position))
+        mode = self.mode.currentData()
 
-    def sample_ready(self, sample, group, position):
+        def measure(control):
+            sample = measure_noise(segment["path"], source_start, duration, control)
+            profile = learn_profile(segment["path"], source_start, duration, control) if mode == "samples" else None
+            return sample, profile
+
+        self.start_job(measure, lambda result: self.sample_ready(result[0], group, position, result[1]))
+
+    def sample_ready(self, sample, group, position, profile=None):
         # Loud regions may be intentional noise references. Warn and request
         # explicit consent instead of either blocking them or learning silently.
         if sample.threshold > -25:
-            self._pending_sample = (sample, group, position)
-            self.measurement.setText(self.tr_text(
-                f"Amostra alta em {tc(position)}: pico {sample.peak_db:.1f} dB → limiar sugerido {sample.threshold} dB. Pode marcar fala ou quase todo o áudio para remoção. Confirme para usar o limiar e depois clique em Recalcular prévia.",
-                f"High-level sample at {tc(position)}: peak {sample.peak_db:.1f} dB → suggested threshold {sample.threshold} dB. May mark speech or almost all audio for removal. Confirm to use the threshold, then click Recalculate preview."))
+            self._pending_sample = (sample, group, position, profile)
+            if self.mode.currentData() == "samples":
+                self.measurement.setText(self.tr_text(
+                    f"Amostra alta em {tc(position)}: pico {sample.peak_db:.1f} dB. Esse perfil pode corresponder a fala. Confirme apenas se quer buscá-lo e revisar os resultados.",
+                    f"High-level sample at {tc(position)}: peak {sample.peak_db:.1f} dB. This profile may match speech. Confirm only if you want to search for it and review the results."))
+            else:
+                self.measurement.setText(self.tr_text(
+                    f"Amostra alta em {tc(position)}: pico {sample.peak_db:.1f} dB → limiar sugerido {sample.threshold} dB. Pode marcar fala ou quase todo o áudio para remoção. Confirme para usar o limiar e depois clique em Recalcular prévia.",
+                    f"High-level sample at {tc(position)}: peak {sample.peak_db:.1f} dB → suggested threshold {sample.threshold} dB. May mark speech or almost all audio for removal. Confirm to use the threshold, then click Recalculate preview."))
             self.confirm_sample_btn.show()
             return
-        self.accept_sample(sample, group, position)
+        self.accept_sample(sample, group, position, profile=profile)
 
     def clear_pending_sample(self):
         self._pending_sample = None
@@ -684,14 +801,21 @@ class AudioReviewDialog(QDialog):
     def confirm_sample(self):
         if self._busy or self._pending_sample is None:
             return
-        sample, group, position = self._pending_sample
-        self.accept_sample(sample, group, position, confirmed=True)
+        sample, group, position, profile = self._pending_sample
+        self.accept_sample(sample, group, position, confirmed=True, profile=profile)
 
-    def accept_sample(self, sample, group, position, confirmed=False):
+    def accept_sample(self, sample, group, position, confirmed=False, profile=None):
         self.clear_pending_sample()
+        if self.mode.currentData() == "samples" and profile is None:
+            self.measurement.setText(self.tr_text("Meça novamente para obter um perfil acústico.", "Sample again to obtain an acoustic profile."))
+            return
         self.samples.append((group, position, sample))
-        self.thresholds[group] = sample.threshold
-        self.threshold.setValue(sample.threshold)
+        if self.mode.currentData() == "samples":
+            self.noise_profiles.setdefault(group, []).append(profile)
+            self.update_profile_count()
+        else:
+            self.thresholds[group] = sample.threshold
+            self.threshold.setValue(sample.threshold)
         self.measurement.setText(self.tr_text(
             f"Amostra {len(self.samples)} em {tc(position)}: pico {sample.peak_db:.1f} dB, média {sample.mean_db:.1f} dB → limiar {sample.threshold} dB. Pausa e proteção mantidas.",
             f"Sample {len(self.samples)} at {tc(position)}: peak {sample.peak_db:.1f} dB, mean {sample.mean_db:.1f} dB → threshold {sample.threshold} dB. Pause and protection unchanged."))
@@ -699,11 +823,15 @@ class AudioReviewDialog(QDialog):
             self.measurement.setText(self.measurement.text() + self.tr_text(
                 " Amostra alta confirmada: revise os cortes antes de aplicar.",
                 " High-level sample confirmed: review the cuts before applying."))
+        if self.mode.currentData() == "samples":
+            self.measurement.setText(self.tr_text(
+                f"Amostra {len(self.noise_profiles[group])} adicionada em {tc(position)}: pico {sample.peak_db:.1f} dB. Recalcule para buscar trechos com nível e textura parecidos.",
+                f"Sample {len(self.noise_profiles[group])} added at {tc(position)}: peak {sample.peak_db:.1f} dB. Recalculate to find regions with similar level and texture."))
         self._dirty = True
         self.apply_btn.setEnabled(False)
         self.summary.setText(self.tr_text(
-            "Amostra medida. Clique em Recalcular prévia para analisar com esse limiar.",
-            "Sample measured. Click Recalculate preview to analyze with this threshold."))
+            "Amostra medida. Clique em Recalcular prévia para atualizar as propostas.",
+            "Sample measured. Click Recalculate preview to update proposals."))
 
     def apply_review(self):
         if self._busy or not self.apply_btn.isEnabled():

@@ -79,25 +79,35 @@ def learn_profile(path, start, duration, control=None):
     return NoiseProfile(*map(float, medians))
 
 
-def find_similar_pauses(path, profiles, minimum, tolerance=1.0, control=None):
+def find_similar_pauses(path, profiles, minimum, tolerance=1.0, control=None, ranges=None):
     if not profiles:
         return []
     if control:
         control.report("matching")
     intervals = []
-    active = None
-    last_end = 0.0
-    for start, end, candidate in iter_profiles(path, control):
-        matches = any(similar_noise(candidate, reference, tolerance) for reference in profiles)
-        if matches and active is None:
-            active = start
-        elif not matches and active is not None:
-            if start - active + 1e-7 >= minimum:
-                intervals.append((active, start))
-            active = None
-        last_end = end
-    if active is not None and last_end - active + 1e-7 >= minimum:
-        intervals.append((active, last_end))
+    windows = ranges if ranges is not None else [(0.0, None)]
+    total = sum(end - start for start, end in windows if end is not None)
+    completed = 0.0
+    frames = 0
+    for window_start, window_end in windows:
+        active = None
+        last_end = window_start
+        duration = window_end - window_start if window_end is not None else None
+        for start, end, candidate in iter_profiles(path, control, window_start, duration):
+            matches = any(similar_noise(candidate, reference, tolerance) for reference in profiles)
+            if matches and active is None:
+                active = start
+            elif not matches and active is not None:
+                if start - active + 1e-7 >= minimum:
+                    intervals.append((active, start))
+                active = None
+            last_end = end
+            frames += 1
+            if control and frames % 100 == 0:
+                control.report("matching", completed + end - window_start, total)
+        if active is not None and last_end - active + 1e-7 >= minimum:
+            intervals.append((active, last_end))
+        completed += max(0, last_end - window_start)
     return intervals
 
 
