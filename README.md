@@ -33,6 +33,7 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - FFmpeg silence detection using one reference audio track per group.
 - Filled, linear waveforms with take boundaries, zoom, pan and display-only gain.
 - Manual noise sampling: moving the needle never starts calibration or creates a cut.
+- Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
 - Separate **Sample here**, **Recalculate preview** and **Apply reviewed cuts** actions.
 - Editable cut boundaries, individual checkboxes and **Keep this region** protection.
 - Three gap-compaction modes, independent of silence analysis.
@@ -103,10 +104,12 @@ Groups are independent: cutting `A1` does not change `A2` or unassigned tracks. 
 
 ## Manual sampling and review
 
+Choose **Volume threshold (existing)** to replace proposals when recalculating, or **Similar samples (incremental)** to accumulate approximate acoustic matches. Both modes require explicit actions and share the same review/apply flow.
+
 ![Four explicit actions: position, measure, recalculate and apply](assets/screenshots/sampling-workflow.svg)
 
 1. Place the amber needle in a quiet region without speech. Click/drag or enter a position in seconds. **This does not measure or modify cuts.**
-2. Choose the sample window and click **Sample here**. Only the threshold setting is updated.
+2. Choose the sample window and click **Sample here**. Threshold mode updates the setting only; incremental mode stores a noise profile only.
 3. Click **Recalculate preview** to generate new proposals. Until then, Apply is disabled when the settings are stale.
 4. Uncheck cuts, edit start/end times or choose **Keep this region** at the needle. Protected regions remain unchecked on subsequent recalculations in that review.
 5. Click **Apply reviewed cuts** only when satisfied. **Close without applying** discards the review's pending edits.
@@ -117,11 +120,24 @@ Loud samples show a warning and require **Use this sample anyway**. A sample ove
 
 ### What does sampling actually change?
 
-It measures **only the amber window**, then proposes an amplitude threshold. It does **not** search for similar-sounding words or audio, and it does not automatically delete that window.
+It measures **only the amber window**. Moving the needle never forces removal of that region.
 
-**Recalculate preview** analyzes the reference audio for its group using the new threshold. It **replaces** the previous automatic proposals rather than adding cuts endlessly. Previously protected regions stay protected during the review. Depending on the settings, proposals can appear, disappear or change boundaries.
+| Mode | What happens after Sample here and Recalculate preview? |
+|---|---|
+| **Volume threshold (existing)** | Uses the suggested dB threshold to analyze the reference audio. The automatic plan is replaced; cuts can appear, disappear or change. |
+| **Similar samples (incremental)** | Stores the sample's level and rough noise texture. Finds approximate matches to any stored profile and merges them into the accumulated plan without duplicate intervals. |
+
+The new mode is **not word recognition or exact sound matching**. It compares short windows by RMS/peak level, zero crossings and a brightness measure. It can still match quiet speech. Use **More precise**, **Balanced** or **Broader** and review the results. Protection, minimum pause and manually unchecked regions still apply.
+
+**Clear samples and proposals** resets that group's accumulated noise references and proposals. Switching back to threshold mode retains the existing workflow; recalculate explicitly after switching. Samples and accumulated proposals are not saved as a separate project.
+
+![Incremental profile matching with stored sample count, similarity setting and reviewed cut proposals](assets/screenshots/incremental.png)
+
+The OTIO export contains the **remaining clips with checked intervals removed and closed within their groups**. Red/amber overlays are only UI markings and are not exported as gaps, colored footage or rendered effects. Existing unrelated gaps are handled separately by Compact timeline.
 
 ### Visual example: measure first, then recalculate
+
+This example uses **Volume threshold (existing)**.
 
 **Needle positioned:** the original proposal is unchanged. No measurement runs just because the line moves.
 

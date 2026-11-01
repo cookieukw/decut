@@ -102,11 +102,36 @@ A loud reference can classify spoken words or almost the whole recording as sile
 
 Moving the needle, changing the window, editing settings or choosing another group dismisses a pending loud-sample confirmation.
 
-### Does it match similar sounds or keep adding cuts?
+### Two analysis modes
 
-No sound-similarity matching is performed. **Sample here** measures only its short window and suggests a threshold for the selected group. **Recalculate preview** uses that setting to analyze the group's reference media and rebuild the proposals in timeline time.
+**Volume threshold (existing)** uses the sampled peak plus 3 dB as a suggested threshold. **Recalculate preview** rebuilds the proposals, replacing the previous automatic plan. It can produce more or fewer cuts or different boundaries; it does not accumulate every past plan.
 
-The new automatic plan replaces the old one. It can contain more or fewer cuts or different boundaries; it is not added to every past plan. Manual protection is retained during the review. No proposed interval, including the sampled window itself, is mandatory: uncheck it or use **Keep this region**.
+**Similar samples (incremental)** learns approximate acoustic noise profiles instead:
+
+1. Select the mode, place the needle and click **Sample here**. This stores a profile for that group without searching yet.
+2. Click **Recalculate preview** to find regions resembling any stored profile.
+3. Sample another unwanted noise/pause and explicitly search again to extend the plan.
+4. Previous proposals are retained and overlapping intervals merged, rather than duplicated. Narrowing similarity or changing minimum pause/protection does not retract accumulated proposals; reset them to start over with stricter rules.
+5. Uncheck false positives or use **Keep this region**. Protection survives later searches in the same review.
+6. Use **Clear samples and proposals** to reset the selected group's profiles and accumulated proposals. Manual protection is retained; re-enable protected cuts in the list if desired.
+
+Matching compares 100 ms mono windows by RMS/peak level, zero-crossing rate and a first-difference energy measure of brightness. It is not exact waveform matching, transcription, word recognition or VAD. Short, quiet speech can resemble noise; review all matches.
+
+The similarity choices scale permitted feature differences:
+
+| Choice | Tolerance factor |
+|---|---|
+| More precise | 0.7× |
+| Balanced | 1.0× |
+| Broader | 1.3× |
+
+Balanced compares RMS within 6 dB, peak within 9 dB, zero-crossing fraction within 0.12 and brightness within 0.35. These are heuristics, not a similarity confidence or a speech-safety score. Minimum pause is evaluated before the protection margin is applied. The threshold spinbox is unused/disabled in this mode.
+
+Switching modes marks the preview stale and requires explicit recalculation. Incremental proposals are kept separately from threshold proposals, so a threshold-mode plan is not automatically copied into the accumulator. Audio profiles and accumulators last only for the current review.
+
+In both modes, no proposed interval, including the sample window itself, is mandatory: uncheck it or use **Keep this region**. A sampled window may not match after minimum-duration/protection rules, and it is not force-added as a cut.
+
+![Similar-sample incremental review](../assets/screenshots/incremental.png)
 
 ![Manual sampling workflow](../assets/screenshots/sampling-workflow.svg)
 
@@ -159,6 +184,8 @@ OTIO timeline duration is determined by the longest track. If a separate unedite
 ### Review window
 
 The summary projects the count, resulting timeline duration, saved time and percentage for the current checked plan. It does not rebuild a full edited timeline after every checkbox change. Stats become stale when settings change; recalculate before applying.
+
+Red and amber are preview overlays only. Applied intervals are removed from the affected clips and closed within the group; the export does not contain the red overlay or a placeholder gap for those removed intervals. Existing gaps unrelated to the chosen cuts may still remain until separately compacted.
 
 ## Export and persistence
 

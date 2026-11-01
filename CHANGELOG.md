@@ -9,6 +9,7 @@
 - FFmpeg amplitude-based silence analysis and globally synchronized gap compaction with three reference modes.
 - Nondestructive waveform review with filled linear peaks, take boundaries, zoom, pan and display-only gain.
 - Manual sampling needle: measurement, proposal recalculation and final application are separate button actions.
+- Optional incremental noise-profile matching, multiple stored samples, similarity tolerance and reset controls while retaining the existing threshold mode.
 - High-level sample warnings with explicit confirmation.
 - Editable boundaries, per-cut enable/disable, persistent protection within a review and needle clearing.
 - Timeline duration/reduction statistics and preview projections.

@@ -8,7 +8,7 @@
 - FFmpeg for amplitude detection, short sample measurements and streamed waveform peaks.
 - PyInstaller + linuxdeploy for Linux x86_64 AppImage builds.
 
-`requirements.txt` is the current source-install dependency list. NumPy and SciPy remain listed but the current waveform/sampling implementation uses standard-library PCM buffers rather than requiring a full decoded NumPy audio array.
+`requirements.txt` is the current source-install dependency list. Noise-profile matching uses NumPy on short PCM frames; waveform generation uses standard-library streamed buffers. Neither requires decoding the full recording into a NumPy array. SciPy remains listed but is not used by the current pipeline.
 
 The old React/Vite editor is no longer part of the application.
 
@@ -20,6 +20,7 @@ otio_cutter.py          Main window, OTIO cut/compaction pipeline, export
 audio_review.py         Review dialog, waveform drawing, manual calibration UI
 audio_tools.py          Streamed PCM peaks and short noise measurements
 media_process.py        Cancellation and FFmpeg subprocess ownership
+noise_matching.py       Incremental acoustic noise-profile comparison
 run_otio_tool.sh        Source launcher
 build_appimage.sh       AppImage build orchestration
 decut.spec              Authoritative PyInstaller bundle recipe
@@ -67,6 +68,8 @@ FFmpeg emits mono 8 kHz, signed 16-bit PCM for the display. `waveform_peaks` ret
 
 Calibration uses a separate, short native-rate FFmpeg `volumedetect` job. Its peak plus 3 dB supplies the proposed threshold. Moving the needle never starts a process. **Sample here** changes the threshold; **Recalculate preview** changes proposals; **Apply reviewed cuts** changes the in-memory timeline.
 
+The optional incremental mode instead learns median feature profiles from 100 ms, mono 8 kHz frames. Profiles contain RMS/peak dB, zero-crossing rate and first-difference energy normalized by RMS. `find_similar_pauses` compares every candidate frame against any stored profile, forms contiguous matches satisfying the minimum duration, and provides intervals to the same source-range/protection mapping pipeline. Searches are limited to the union of referenced source windows rather than unused portions of a long file, with progress reporting. The resulting intervals are unioned with prior incremental proposals; checked/protected UI decisions are applied afterward. This is heuristic noise matching, not semantic similarity or voice activity detection.
+
 The chosen sample window stays inside its clip. High-level suggestions require explicit confirmation. This does not constitute voice activity detection.
 
 ### Thread and process lifecycle
@@ -86,7 +89,7 @@ bash -n build_appimage.sh run_otio_tool.sh assets/AppRun
 
 Qt tests run offscreen. Tests requiring FFmpeg are skipped if it is unavailable; install it for full coverage. Fixtures use generated audio and temporary directories, not private episode files.
 
-Coverage includes source-range/rate mapping, grouped ripple cuts, protection margins, OTIO serialization, export naming/folder preferences, passive needle interactions, explicit measurement/recalculation/apply, loud-sample confirmation, linear waveform contrast, protected cuts and process/window cancellation. These tests do not replace a manual Kdenlive round-trip check on supported project structures.
+Coverage includes source-range/rate mapping, grouped ripple cuts, protection margins, OTIO serialization, export naming/folder preferences, passive needle interactions, explicit measurement/recalculation/apply, loud-sample confirmation, linear waveform contrast, protected cuts, process/window cancellation, incremental profile matching/union and release-version consistency. These tests do not replace a manual Kdenlive round-trip check on supported project structures.
 
 ## AppImage build
 
