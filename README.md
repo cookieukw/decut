@@ -2,6 +2,16 @@
 
 A Python desktop tool for removing silence from Kdenlive timelines without rendering an intermediate video.
 
+## Screenshots
+
+### Timeline and track grouping
+
+![Timeline with grouped video and audio tracks](assets/screenshots/timeline.png)
+
+### Empty project state
+
+![Empty project state](assets/screenshots/empty.png)
+
 ## How it works
 
 1. Export your Kdenlive edit as **OpenTimelineIO (`.otio`)**.
