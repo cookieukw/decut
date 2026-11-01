@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="232" viewBox="0 0 1120 232" role="img" aria-labelledby="title desc">
   <title id="title">Four explicit actions, from sampling to applying cuts</title>
-  <desc id="desc">Moving the needle does not analyze. Sample here measures noise and changes a setting only. Recalculate replaces automatic proposals. Apply commits only the reviewed checked cuts.</desc>
+  <desc id="desc">Moving the needle does not analyze. Sample here measures a reference only. Recalculate replaces threshold proposals or accumulates similar-sample matches, depending on the mode. Apply commits only reviewed checked cuts.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1 L6 4 L1 7" fill="none" stroke="#8c9f92" stroke-width="1.5"/></marker>
   </defs>
@@ -27,8 +27,8 @@
     </g>
     <g fill="#a6b7ab" font-size="13">
       <text x="35" y="139">No analysis.</text><text x="35" y="159">No new cuts.</text>
-      <text x="311" y="139">Measures the sample.</text><text x="311" y="159">Updates the threshold only.</text>
-      <text x="587" y="139">Replaces automatic proposals.</text><text x="587" y="159">Keeps manual protection.</text>
+      <text x="311" y="139">Measures the sample.</text><text x="311" y="159">Stores a setting or noise profile.</text>
+      <text x="587" y="139">Threshold: replaces the plan.</text><text x="587" y="159">Samples: accumulates matches.</text>
       <text x="863" y="139">Commits checked cuts.</text><text x="863" y="159">Source media stays untouched.</text>
     </g>
     <g stroke="#8c9f92" stroke-width="1.5" marker-end="url(#arrow)">
