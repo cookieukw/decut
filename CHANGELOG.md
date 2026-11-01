@@ -10,6 +10,7 @@
 - Nondestructive waveform review with filled linear peaks, take boundaries, zoom, pan and display-only gain.
 - Manual sampling needle: measurement, proposal recalculation and final application are separate button actions.
 - Optional incremental noise-profile matching, multiple stored samples, similarity tolerance and reset controls while retaining the existing threshold mode.
+- Visible sample history, per-mode/group counters, numbered blue waveform references and click-to-locate sample rows.
 - High-level sample warnings with explicit confirmation.
 - Editable boundaries, per-cut enable/disable, persistent protection within a review and needle clearing.
 - Timeline duration/reduction statistics and preview projections.

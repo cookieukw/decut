@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import opentimelineio as otio
-from PySide6.QtCore import Qt, QThread, Signal, QSettings, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QSettings, QTimer, QEvent
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox,
@@ -477,7 +477,13 @@ def main():
     app.setApplicationName("decut")
     app.setOrganizationName("decut")
     app.setApplicationVersion(__version__)
-    app.setStyleSheet("QWidget{font-family:'IBM Plex Sans';font-size:12px;background:#151817;color:#e4ebe5} QMainWindow{background:#111313} QPushButton{background:#2b3c2e;border:1px solid #465948;border-radius:5px;padding:8px 12px} QPushButton:hover{background:#3b523d} QLineEdit,QSpinBox,QDoubleSpinBox,QTableWidget{background:#202522;border:1px solid #3a443d;border-radius:4px;padding:5px} QHeaderView::section{background:#252c28;color:#9fac9f;padding:7px;border:0} #title{font-size:18px;font-weight:600;padding:10px 0}"); window = MainWindow(); window.show(); sys.exit(app.exec())
+    app.setStyleSheet("QWidget{font-family:'IBM Plex Sans';font-size:12px;background:#151817;color:#e4ebe5} QMainWindow{background:#111313} QPushButton{background:#2b3c2e;border:1px solid #465948;border-radius:5px;padding:8px 12px} QPushButton:hover{background:#3b523d} QLineEdit,QSpinBox,QDoubleSpinBox,QTableWidget{background:#202522;border:1px solid #3a443d;border-radius:4px;padding:5px} QHeaderView::section{background:#252c28;color:#9fac9f;padding:7px;border:0} #title{font-size:18px;font-weight:600;padding:10px 0}")
+    window = MainWindow()
+    window.show()
+    code = app.exec()
+    window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    sys.exit(code)
 
 
 if __name__ == "__main__": main()

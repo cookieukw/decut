@@ -12,6 +12,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from otio_cutter import MainWindow, process_timeline
+from qt_helpers import QtTestCase
 
 
 def clip(start, duration, path, rate=60):
@@ -58,7 +59,7 @@ class PipelineTests(unittest.TestCase):
             ], -45, 1, .18)
 
 
-class ExportTests(unittest.TestCase):
+class ExportTests(QtTestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

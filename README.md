@@ -34,6 +34,7 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Filled, linear waveforms with take boundaries, zoom, pan and display-only gain.
 - Manual noise sampling: moving the needle never starts calibration or creates a cut.
 - Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
+- Numbered blue sample markers and a saved-samples table with time, duration and measured levels.
 - Separate **Sample here**, **Recalculate preview** and **Apply reviewed cuts** actions.
 - Editable cut boundaries, individual checkboxes and **Keep this region** protection.
 - Three gap-compaction modes, independent of silence analysis.
@@ -130,6 +131,10 @@ It measures **only the amber window**. Moving the needle never forces removal of
 The new mode is **not word recognition or exact sound matching**. It compares short windows by RMS/peak level, zero crossings and a brightness measure. It can still match quiet speech. Use **More precise**, **Balanced** or **Broader** and review the results. Protection, minimum pause and manually unchecked regions still apply.
 
 **Clear samples and proposals** resets that group's accumulated noise references and proposals. Switching back to threshold mode retains the existing workflow; recalculate explicitly after switching. Samples and accumulated proposals are not saved as a separate project.
+
+Use **Samples: N · View list** (or **Measurements: N · View list** in threshold mode) to open **Saved samples**. Each row shows its numbered blue waveform marker, timeline position, window duration, peak/mean level and whether it is a threshold measurement or similarity profile. Click a row to locate it without starting analysis. Threshold measurements are shown separately from incremental profiles, so the counter no longer misleadingly stays at zero after calibrating the threshold.
+
+![Saved sample table and numbered blue waveform marker](assets/screenshots/samples.png)
 
 ![Incremental profile matching with stored sample count, similarity setting and reviewed cut proposals](assets/screenshots/incremental.png)
 

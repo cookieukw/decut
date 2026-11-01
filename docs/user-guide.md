@@ -137,6 +137,18 @@ In both modes, no proposed interval, including the sample window itself, is mand
 
 The [README's visual walkthrough](../README.md#visual-example-measure-first-then-recalculate) shows actual screenshots before measurement, after measurement and after recalculation, with a worked example of the duration calculation.
 
+### Finding saved samples
+
+The counter above the waveform is clickable. In threshold mode it reads **Measurements: N · View list**; in incremental mode it reads **Samples: N · View list**. It opens the **Saved samples** tab beside **Proposed cuts**.
+
+The table lists the sample number, timeline position, window duration, peak, mean and use. Numbered blue bands (`#1`, `#2`, etc.) mark the stored windows on the waveform. These are references, not cuts, and they stay visible when you clear the live amber needle.
+
+Clicking a sample row moves the needle and zooms to that reference without measuring or recalculating. Successful measurement opens the samples tab for feedback; recalculation returns to the cut tab for review.
+
+Lists are scoped to the selected group and mode. Threshold measurement history is not a set of incremental similarity profiles; switch to incremental mode and measure there to create profiles. A pending loud sample is recorded only after confirmation. Resetting samples/proposals removes that group's incremental references and markers, not its threshold measurement history.
+
+These records last for the current review and are not saved to the OTIO. No blue/amber/red UI marker is embedded in the exported edit.
+
 ## Editing and protecting cuts
 
 The cut table contains **Remove**, **Start** and **End**. Boundary values are seconds in the current timeline, not source-file time or frame numbers.

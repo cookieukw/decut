@@ -18,6 +18,7 @@ import wave
 from audio_review import AudioReviewDialog
 from noise_matching import pcm_profile, similar_noise, learn_profile, find_similar_pauses, merge_intervals
 from otio_cutter import collect_group_cuts, apply_group_cuts, media_path
+from qt_helpers import QtTestCase
 
 
 class MatchingMathTests(unittest.TestCase):
@@ -34,7 +35,7 @@ class MatchingMathTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") or os.environ.get("DECUT_FFMPEG"), "FFmpeg required")
-class IncrementalReviewTests(unittest.TestCase):
+class IncrementalReviewTests(QtTestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -79,6 +80,8 @@ class IncrementalReviewTests(unittest.TestCase):
             dialog.sample_btn.click()
             self.wait(dialog)
             self.assertEqual(len(dialog.noise_profiles["A1"]), 1)
+            self.assertEqual(dialog.samples_table.rowCount(), 1)
+            self.assertEqual(len(dialog.wave.sample_markers), 1)
             dialog.recalculate.click()
             self.wait(dialog)
             self.assertEqual(len(dialog.cuts["A1"]), 1)

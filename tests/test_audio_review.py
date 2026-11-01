@@ -13,16 +13,17 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import opentimelineio as otio
-from PySide6.QtCore import Qt, QTimer, QPoint
+from PySide6.QtCore import Qt, QTimer, QPoint, QCoreApplication, QEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from audio_review import AudioReviewDialog, SamplingWaveform, projected_duration
 from audio_tools import NoiseSample, measure_noise, sample_window, threshold_from_peak, waveform_peaks
 from otio_cutter import MainWindow, apply_group_cuts, collect_group_cuts, media_path
+from qt_helpers import QtTestCase
 
 
-class SampleMathTests(unittest.TestCase):
+class SampleMathTests(QtTestCase):
     def test_threshold_and_sample_boundaries(self):
         self.assertEqual(threshold_from_peak(-49.2), -46)
         self.assertEqual(threshold_from_peak(-91), -80)
@@ -77,7 +78,7 @@ class SampleMathTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") or os.environ.get("DECUT_FFMPEG"), "FFmpeg required")
-class CalibrationTests(unittest.TestCase):
+class CalibrationTests(QtTestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -97,6 +98,7 @@ class CalibrationTests(unittest.TestCase):
                                      for i in range(rate * 5)))
 
     def tearDown(self):
+        super().tearDown()
         self.directory.cleanup()
 
     def wait_for_job(self, dialog):
@@ -139,9 +141,14 @@ class CalibrationTests(unittest.TestCase):
         self.wait_for_job(dialog)
         self.assertEqual(len(dialog.samples), 1)
         self.assertEqual(dialog.threshold.value(), -50)
+        self.assertEqual(dialog.samples_table.rowCount(), 1)
+        self.assertIn("Measurements: 1", dialog.profile_count.text())
+        self.assertEqual(dialog.wave.sample_markers[0]["number"], 1)
+        self.assertEqual(dialog.review_tabs.currentIndex(), 1)
         self.assertTrue(dialog._dirty)
         dialog.recalculate.click()
         self.wait_for_job(dialog)
+        self.assertEqual(dialog.review_tabs.currentIndex(), 0)
         dialog.position.setValue(3.5)
         dialog.sample_here()
         self.wait_for_job(dialog)
@@ -175,6 +182,50 @@ class CalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(dialog.output.duration().to_seconds(), 4.2, places=2)
         self.assertAlmostEqual(timeline.duration().to_seconds(), 5)
         dialog.close()
+
+    def test_saved_samples_are_visible_per_mode_and_can_be_located(self):
+        timeline = otio.schema.Timeline()
+        track = otio.schema.Track(name="mic", kind="Audio")
+        track.append(otio.schema.Clip(
+            media_reference=otio.schema.ExternalReference(target_url=str(self.path)),
+            source_range=otio.opentime.TimeRange(
+                otio.opentime.RationalTime(0, 60), otio.opentime.RationalTime(300, 60))))
+        timeline.tracks.append(track)
+        dialog = AudioReviewDialog(timeline, [{"index": 0, "group": "A1", "analyze": True}],
+                                   -50, .4, .1, collect_group_cuts, apply_group_cuts, media_path, "en")
+        self.wait_for_job(dialog)
+        dialog.needle_selected(1.5)
+        dialog.sample_btn.click()
+        self.wait_for_job(dialog)
+        self.assertEqual(dialog.samples_table.rowCount(), 1)
+        self.assertEqual(dialog.samples_table.item(0, 0).text(), "#1")
+        self.assertEqual(dialog.samples_table.item(0, 5).text(), "Threshold suggestion")
+        before = list(dialog.cuts["A1"])
+        with patch("audio_review.measure_noise") as measure:
+            dialog.locate_sample(0)
+            self.assertAlmostEqual(dialog.position.value(), 1.5)
+            self.assertEqual(measure.call_count, 0)
+            self.assertEqual(dialog.cuts["A1"], before)
+        dialog.wave.clear_selection()
+        self.assertEqual(len(dialog.wave.sample_markers), 1, "Clearing the needle must keep stored markers")
+        dialog.mode.setCurrentIndex(1)
+        self.assertEqual(dialog.samples_table.rowCount(), 0)
+        self.assertIn("No samples", dialog.samples_hint.text())
+        dialog.needle_selected(3.5)
+        dialog.sample_btn.click()
+        self.wait_for_job(dialog)
+        self.assertEqual(dialog.samples_table.rowCount(), 1)
+        self.assertEqual(dialog.samples_table.item(0, 5).text(), "Similarity profile")
+        self.assertIn("Samples: 1", dialog.profile_count.text())
+        dialog.reset_samples_btn.click()
+        self.assertEqual(dialog.samples_table.rowCount(), 0)
+        self.assertEqual(dialog.wave.sample_markers, [])
+        dialog.mode.setCurrentIndex(0)
+        self.assertEqual(dialog.samples_table.rowCount(), 1, "Resetting profiles must not erase threshold history")
+        dialog.close()
+        dialog.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        self.app.processEvents()
 
     def test_needle_is_passive_measurement_and_recalculation_are_explicit(self):
         timeline = otio.schema.Timeline()
@@ -269,7 +320,7 @@ class CalibrationTests(unittest.TestCase):
         dialog.close()
 
 
-class LifetimeTests(unittest.TestCase):
+class LifetimeTests(QtTestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
