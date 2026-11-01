@@ -3,6 +3,10 @@
   <id>com.decut.App</id>
   <name>decut</name>
   <summary>OpenTimelineIO silence cutter</summary>
+  <url type="homepage">https://github.com/cookieukw/decut</url>
+  <developer id="io.github.cookieukw">
+    <name>Cookie</name>
+  </developer>
   <description>
     <p>Remove silence and compact Kdenlive timelines while preserving synchronized video and audio tracks.</p>
   </description>
