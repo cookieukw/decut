@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.decut.App</id>
+  <name>decut</name>
+  <summary>OpenTimelineIO silence cutter</summary>
+  <description>
+    <p>Remove silence and compact Kdenlive timelines while preserving synchronized video and audio tracks.</p>
+  </description>
+  <launchable type="desktop-id">com.decut.App.desktop</launchable>
+  <provides><binary>decut</binary></provides>
+  <categories><category>AudioVideo</category><category>AudioVideoEditing</category></categories>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+</component>

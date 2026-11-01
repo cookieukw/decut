@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=decut
+Comment=OpenTimelineIO silence cutter
+Exec=decut
+Icon=decut
+Terminal=false
+Categories=AudioVideo;AudioVideoEditing;

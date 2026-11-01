@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+
+# Packaging/build output
+build/
+dist/
+AppDir/
+*.AppImage
+.cache/
+*.spec
+
+# Generated analysis/export files
+silences.json
+timeline_decut.otio
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~
