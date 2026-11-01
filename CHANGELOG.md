@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Linked seconds/frame needle fields, timeline FPS detection with a navigation override, exact one-frame buttons and Ctrl-arrow stepping.
+- Short Qt Multimedia audition from the needle or sampling window, source-range-aware seek/stop, preview volume and a separate playback cursor.
+- Navigation and playback tests, including passive controls that never start analysis or cut media.
+
 ## 1.0.0 · 2026-11-01
 
 ### Added
@@ -33,7 +39,7 @@
 ### Known limitations
 
 - Amplitude detection is not VAD or speech recognition.
-- Audio audition, general undo, project-library autosave and persistent review sessions are not implemented.
+- At the initial release, audio audition, general undo, project-library autosave and persistent review sessions were not implemented; see Unreleased for subsequent additions.
 - Complex Kdenlive/OTIO effects, nested compositions, transitions and alternate audio-stream selection are not fully supported.
 - Source media stays externally referenced. Linux/AppImage compatibility depends on the build baseline and host libraries.
 

@@ -19,6 +19,8 @@ app_version.py          Shared application version
 otio_cutter.py          Main window, OTIO cut/compaction pipeline, export
 audio_review.py         Review dialog, waveform drawing, manual calibration UI
 audio_tools.py          Streamed PCM peaks and short noise measurements
+audio_audition.py       Qt Multimedia playback and source-range audition mapping
+timeline_time.py        Timeline FPS detection and seconds/frame conversion
 media_process.py        Cancellation and FFmpeg subprocess ownership
 noise_matching.py       Incremental acoustic noise-profile comparison
 run_otio_tool.sh        Source launcher
@@ -71,6 +73,14 @@ Calibration uses a separate, short native-rate FFmpeg `volumedetect` job. Its pe
 The optional incremental mode instead learns median feature profiles from 100 ms, mono 8 kHz frames. Profiles contain RMS/peak dB, zero-crossing rate and first-difference energy normalized by RMS. `find_similar_pauses` compares every candidate frame against any stored profile, forms contiguous matches satisfying the minimum duration, and provides intervals to the same source-range/protection mapping pipeline. Searches are limited to the union of referenced source windows rather than unused portions of a long file, with progress reporting. The resulting intervals are unioned with prior incremental proposals; checked/protected UI decisions are applied afterward. This is heuristic noise matching, not semantic similarity or voice activity detection.
 
 The chosen sample window stays inside its clip. High-level suggestions require explicit confirmation. This does not constitute voice activity detection.
+
+### Navigation and audio audition
+
+`timeline_time.py` chooses a usable timeline time rate (falling back to 30 fps) without using native media FPS. The UI keeps a precise seconds cursor and two signal-blocked input fields to avoid conversion feedback loops. Frame inputs and stepping seek to exact frame-derived times; the seconds display is not the source of truth for those seeks. Navigation FPS is a UI conversion override, not an export/processing rate override.
+
+`AudioAudition` is created lazily on first playback and owns a `QMediaPlayer` and `QAudioOutput`. It waits for media loading/seeking, maps timeline positions into source-file milliseconds, and limits preview to three seconds or the sample window/current take boundary. It stops on navigation, analysis and review closure. Native playback scheduling/position reporting is not a sample-accurate renderer; the OTIO cut plan is unaffected. A separate dashed playback cursor avoids moving the calibration needle during audition.
+
+Transport wiring is tested with a silent test player so tests do not send sound to the developer's speakers. Source mapping and bounds have separate tests; a real Qt Multimedia smoke test can be performed with preview volume zero on a supported file/device. PyInstaller's Qt Multimedia hook must be included in builds. Host audio-device/codec failures should remain visible and must not prevent waveform analysis.
 
 ### Thread and process lifecycle
 

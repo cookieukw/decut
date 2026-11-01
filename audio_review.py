@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QSplitter, QProgressBar, QTabWidget, QAbstractItemView, QSlider,
+    QVBoxLayout, QWidget, QSplitter, QProgressBar, QTabWidget, QAbstractItemView, QSlider, QLayout,
 )
 
 from audio_tools import measure_noise, sample_window, waveform_peaks
@@ -279,7 +279,8 @@ class AudioReviewDialog(QDialog):
         self._closing = False
         self._stage = "analysis"
         self.audition = None
-        self.resize(1100, 720)
+        self.resize(1100, 700)
+        self.setMinimumSize(980, 640)
         self.setWindowTitle(self.tr_text("Revisar e calibrar cortes", "Review and calibrate cuts"))
         layout = QVBoxLayout(self)
         self.hint = QLabel(self.tr_text(
@@ -351,13 +352,17 @@ class AudioReviewDialog(QDialog):
             self.tr_text("Pico", "Peak"), self.tr_text("Média", "Mean"), self.tr_text("Uso", "Use")])
         self.samples_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.samples_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.samples_table.setMinimumHeight(76)
+        self.samples_table.setMaximumHeight(150)
         self.samples_table.horizontalHeader().setStretchLastSection(True)
         self.samples_table.cellClicked.connect(self.locate_sample)
         samples_layout.addWidget(self.samples_table)
         self.review_tabs.addTab(samples_panel, self.tr_text("Amostras salvas", "Saved samples"))
         self.profile_count.clicked.connect(lambda: self.review_tabs.setCurrentIndex(1))
         splitter.addWidget(self.review_tabs)
-        splitter.setSizes([320, 180])
+        splitter.setMinimumHeight(250)
+        splitter.setMaximumHeight(330)
+        splitter.setSizes([220, 100])
         layout.addWidget(splitter, 1)
         legend = QLabel(self.tr_text(
             "Verde: áudio · Vermelho: corte · Amarelo: agulha · Azul #N: amostra salva (não é corte)",
@@ -423,6 +428,11 @@ class AudioReviewDialog(QDialog):
         self.window.setValue(.6)
         self.window.setSuffix(" s")
         self.sample_btn = QPushButton(self.tr_text("Medir aqui", "Sample here"))
+        self.remove_sample_btn = QPushButton(self.tr_text("Remover esta amostra", "Remove this sample"))
+        self.remove_sample_btn.setToolTip(self.tr_text(
+            "Adiciona somente a janela amarela aos cortes revisados. Ainda exige Aplicar cortes revisados.",
+            "Adds only the amber window to reviewed cuts. Apply reviewed cuts is still required."))
+        self.remove_sample_btn.setEnabled(False)
         self.clear_needle_btn = QPushButton(self.tr_text("Limpar agulha", "Clear needle"))
         self.preserve_btn = QPushButton(self.tr_text("Não cortar aqui", "Keep this region"))
         self.preserve_btn.setToolTip(self.tr_text(
@@ -431,6 +441,7 @@ class AudioReviewDialog(QDialog):
         sampling.addWidget(QLabel(self.tr_text("Janela", "Window")))
         sampling.addWidget(self.window)
         sampling.addWidget(self.sample_btn)
+        sampling.addWidget(self.remove_sample_btn)
         sampling.addWidget(self.clear_needle_btn)
         sampling.addWidget(self.preserve_btn)
         form.addRow(sampling)
@@ -481,12 +492,15 @@ class AudioReviewDialog(QDialog):
         bottom = QHBoxLayout()
         self.recalculate = QPushButton(self.tr_text("Recalcular prévia", "Recalculate preview"))
         self.apply_btn = QPushButton(self.tr_text("Aplicar cortes revisados", "Apply reviewed cuts"))
+        self.apply_btn.setMinimumHeight(38)
         self.cancel_btn = QPushButton(self.tr_text("Fechar sem aplicar", "Close without applying"))
+        self.cancel_btn.setMinimumHeight(38)
         bottom.addWidget(self.recalculate)
         bottom.addStretch()
         bottom.addWidget(self.cancel_btn)
         bottom.addWidget(self.apply_btn)
         layout.addLayout(bottom)
+        layout.setSizeConstraint(QLayout.SetMinimumSize)
         self.samples = []
         self.wave.selected.connect(self.needle_selected)
         self.wave.selection_cleared.connect(self.selection_cleared)
@@ -503,6 +517,7 @@ class AudioReviewDialog(QDialog):
         self.reference.currentIndexChanged.connect(self.reference_changed)
         self.fit_btn.clicked.connect(self.wave.fit)
         self.sample_btn.clicked.connect(self.sample_here)
+        self.remove_sample_btn.clicked.connect(self.remove_current_sample)
         self.clear_needle_btn.clicked.connect(self.wave.clear_selection)
         self.preserve_btn.clicked.connect(self.preserve_selection)
         self.recalculate.clicked.connect(self.refresh)
@@ -525,7 +540,7 @@ class AudioReviewDialog(QDialog):
         if busy:
             self.stop_audio()
         self._busy = busy
-        for widget in (self.reference, self.recalculate, self.sample_btn, self.mode, self.profile_count,
+        for widget in (self.reference, self.recalculate, self.sample_btn, self.remove_sample_btn, self.mode, self.profile_count,
                         self.threshold, self.minimum, self.padding, self.position, self.window,
                         self.intervals, self.wave, self.position_frames, self.navigation_fps,
                         self.previous_frame_btn, self.next_frame_btn):
@@ -535,13 +550,14 @@ class AudioReviewDialog(QDialog):
         self.similarity.setEnabled(not busy and samples_mode)
         self.reset_samples_btn.setEnabled(not busy and samples_mode)
         self.cancel_btn.setEnabled(not self._closing)
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+        for button in (self.sample_btn, self.remove_sample_btn, self.clear_needle_btn, self.preserve_btn,
                        self.listen_btn, self.listen_window_btn):
             button.setEnabled(not busy and self.wave.has_selection)
         self.confirm_sample_btn.setEnabled(not busy)
         self.cancel_btn.setText(self.tr_text("Cancelar e fechar", "Cancel and close") if busy
                                 else self.tr_text("Fechar sem aplicar", "Close without applying"))
         self.apply_btn.setEnabled(not busy and not self._dirty and any(self.cuts.values()))
+        self.update_apply_label()
 
     def start_job(self, task, callback):
         if self._busy:
@@ -796,7 +812,7 @@ class AudioReviewDialog(QDialog):
             self.wave.segments = segments
             self.wave.duration = duration
             self.wave.update()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+        for button in (self.sample_btn, self.remove_sample_btn, self.clear_needle_btn, self.preserve_btn,
                        self.listen_btn, self.listen_window_btn):
             button.setEnabled(not self._busy and self.wave.has_selection)
         self.load_intervals()
@@ -863,6 +879,15 @@ class AudioReviewDialog(QDialog):
         cut_label = self.tr_text("cortes", "cuts")
         self.summary.setText(f"{prefix}: {sum(self.counts.values())} {cut_label} · {tc(before)} → {tc(after)} · −{tc(removed)} ({percent:.1f}%)")
         self.apply_btn.setEnabled(not self._busy and not self._dirty and any(self.cuts.values()))
+        self.update_apply_label()
+
+    def update_apply_label(self):
+        if self._busy:
+            self.apply_btn.setText(self.tr_text("Aplicando…", "Applying…"))
+        elif any(self.cuts.values()) and not self._dirty:
+            self.apply_btn.setText(self.tr_text("Aplicar cortes revisados", "Apply reviewed cuts"))
+        else:
+            self.apply_btn.setText(self.tr_text("Nenhum corte pronto", "No cuts ready"))
 
     def position_changed(self, position):
         self.set_needle_position(position)
@@ -883,7 +908,7 @@ class AudioReviewDialog(QDialog):
             self.wave.view_start = max(0, min(self.wave.duration - self.wave.view_duration,
                                             position - self.wave.view_duration / 2))
         self.wave.update()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+        for button in (self.sample_btn, self.remove_sample_btn, self.clear_needle_btn, self.preserve_btn,
                        self.listen_btn, self.listen_window_btn):
             button.setEnabled(not self._busy)
 
@@ -902,6 +927,7 @@ class AudioReviewDialog(QDialog):
         self.sync_position_controls(self.wave.cursor)
 
     def window_changed(self, value):
+        self.stop_audio()
         self.clear_pending_sample()
         self.wave.sample_width = value
         self.wave.update()
@@ -912,7 +938,7 @@ class AudioReviewDialog(QDialog):
     def selection_cleared(self):
         self.stop_audio()
         self.clear_pending_sample()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+        for button in (self.sample_btn, self.remove_sample_btn, self.clear_needle_btn, self.preserve_btn,
                        self.listen_btn, self.listen_window_btn):
             button.setEnabled(False)
         self.measurement.setText(self.tr_text(
@@ -980,6 +1006,31 @@ class AudioReviewDialog(QDialog):
         self.measurement.setText(self.tr_text(
             "Corte desmarcado. Esse trecho será mantido." if found else "Não há corte proposto nessa posição.",
             "Cut unchecked. This region will be kept." if found else "No proposed cut at this position."))
+
+    def remove_current_sample(self):
+        if self._busy or not self.wave.has_selection:
+            return
+        group = self.group()
+        segment = next((s for s in self.audio.get(group, ([], 0))[0]
+                        if s["start"] <= self.wave.cursor < s["start"] + s["duration"]), None)
+        if segment is None:
+            self.measurement.setText(self.tr_text("A agulha está em um gap, não em áudio.", "The needle is in a gap, not in audio."))
+            return
+        start, duration = sample_window(segment["start"], segment["start"] + segment["duration"],
+                                        self.wave.cursor, self.window.value())
+        interval = (start, start + duration)
+        self.cuts[group] = merge_intervals(self.cuts.get(group, []) + [interval])
+        self.review_rows[group] = [(a, b, True) for a, b in self.cuts[group]]
+        if self.mode.currentData() == "samples":
+            self.incremental_cuts[group] = merge_intervals(self.incremental_cuts.get(group, []) + [interval])
+        self.protected_ranges[group] = [
+            (a, b) for a, b in self.protected_ranges.get(group, [])
+            if not (a < interval[1] and b > interval[0])]
+        self._dirty = False
+        self.load_intervals()
+        self.measurement.setText(self.tr_text(
+            f"Amostra adicionada aos cortes: {tc(start)} → {tc(start + duration)}. Clique em Aplicar cortes revisados.",
+            f"Sample added to cuts: {tc(start)} → {tc(start + duration)}. Click Apply reviewed cuts."))
 
     def sample_here(self):
         if self._busy:

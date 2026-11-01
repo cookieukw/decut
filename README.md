@@ -32,6 +32,8 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Linked video, game audio and voice cuts through explicit track groups.
 - FFmpeg silence detection using one reference audio track per group.
 - Filled, linear waveforms with take boundaries, zoom, pan and display-only gain.
+- Synchronized seconds/frame needle positioning and one-frame stepping.
+- Local audio audition from the needle or the exact sampling window, with preview-only volume.
 - Manual noise sampling: moving the needle never starts calibration or creates a cut.
 - Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
 - Numbered blue sample markers and a saved-samples table with time, duration and measured levels.
@@ -116,6 +118,10 @@ Choose **Volume threshold (existing)** to replace proposals when recalculating, 
 5. Click **Apply reviewed cuts** only when satisfied. **Close without applying** discards the review's pending edits.
 
 **Clear needle**, `Esc` or `Delete` hides the needle and amber sample window without changing cuts. The amber area is **not** a deletion. Only checked red intervals are applied.
+
+You can position the needle using **Needle (seconds)** or **Frame**; both fields stay synchronized using **Navigation FPS**. It is detected from the timeline, not the source video's native rate, and can be corrected when necessary. Frames are zero-based; for example, frame 3086 at 60 fps is 51.433333 seconds. Use **−1 frame / +1 frame** or `Ctrl` + left/right with waveform focus for exact stepping.
+
+Use **Listen from here (3 s)** to hear the reference audio from the needle, or **Listen to window** to hear the amber sample window. Playback stops at the end of the current take. **Stop** and **Preview volume** affect audition only; moving the needle, starting analysis or closing the review stops playback. Listening never measures noise or changes cuts.
 
 Loud samples show a warning and require **Use this sample anyway**. A sample overlapping speech can suggest a dangerously high threshold; prefer a window wholly inside the pause.
 

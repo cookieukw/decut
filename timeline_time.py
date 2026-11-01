@@ -9,15 +9,18 @@ def timeline_frame_rate(timeline, fallback=30.0):
     if timeline.tracks.source_range is not None:
         candidates.append(timeline.tracks.source_range.duration.rate)
     try:
-        candidates.append(timeline.duration().rate)
+        duration = timeline.duration()
+        if duration.value > 0:
+            candidates.append(duration.rate)
     except (ValueError, RuntimeError):
         pass
     for track in timeline.tracks:
         if track.source_range is not None:
             candidates.append(track.source_range.duration.rate)
         for child in track:
-            if child.source_range is not None:
-                candidates.append(child.source_range.duration.rate)
+            source_range = getattr(child, "source_range", None)
+            if source_range is not None:
+                candidates.append(source_range.duration.rate)
     return next((float(rate) for rate in candidates if math.isfinite(rate) and 1 <= rate <= 240), fallback)
 
 

@@ -66,15 +66,17 @@ Applying again in a new review works on the already-edited in-memory timeline. R
 - **Display gain** ranges from 0.5× to 16×, default 2×. It changes only the drawing, not sample measurements, media volume or detection.
 - Long recordings viewed in full can hide short pauses within a single screen pixel. Zoom in to inspect them.
 
-Waveform data is read as small FFmpeg PCM buckets, with a capped number of cached peaks per clip. It is not a full-resolution audio buffer or an audio player. Audio audition/playback is not implemented in this version; listen in Kdenlive when verifying ambiguous speech/noise.
+Waveform data is read as small FFmpeg PCM buckets, with a capped number of cached peaks per clip. It is not a full-resolution audio-editing buffer. Short audition is available through the playback controls described below.
 
 ### Navigation
 
 | Action | Control |
 |---|---|
 | Place the needle | Left-click the waveform |
-| Move the needle | Drag with the left button or edit the Needle field |
+| Move the needle in seconds | Drag with the left button or edit Needle (seconds) |
+| Move the needle to a frame | Edit Frame; seconds update automatically |
 | Step the needle | Left/right arrow, 100 ms per step |
+| Step exactly one frame | −1 frame / +1 frame, or Ctrl + left/right with waveform focus |
 | Zoom at the pointer | Mouse wheel |
 | Pan horizontally | Drag with the middle mouse button |
 | Show the entire reference track | Fit waveform |
@@ -82,6 +84,27 @@ Waveform data is read as small FFmpeg PCM buckets, with a capped number of cache
 | Keep a proposed region | Keep this region at the needle, or uncheck it in the list |
 
 Moving the needle, changing display gain or changing the sampling window never starts a detection job.
+
+### Seconds, frames and FPS
+
+The fields are linked, not separate selections. Entering a frame seeks to that frame's starting time (`seconds = frame / FPS`). Entering seconds preserves that time and displays the nearest available frame index; the seconds field also allows subframe positions. Frame 0 is the beginning of the current timeline, not the original media's start or an added global timecode offset. An exact whole-frame end boundary can be selected, but it contains no playable audio.
+
+For example, at 60 fps, frame **3086** is **51.433333… seconds**. The internal needle preserves the frame-derived time rather than converting back from the rounded seconds display. Frame stepping does not accumulate that display-rounding error. Jumps outside the current zoomed view reveal the selected point without changing zoom.
+
+**Navigation FPS** is detected from OTIO timeline time rates, not the external media's native FPS or sample rate. If no usable frame rate is present, it falls back to 30 fps. Verify it matches your Kdenlive project; fractional rates such as 30000/1001 may be entered as approximately 29.97002997. Changing this field updates the frame conversion while keeping the needle's selected time. It does not re-encode media, alter export FPS or rescale the cuts.
+
+### Listening before measuring
+
+- **Listen from here (3 s)** plays up to three seconds from the needle on the selected group's reference audio.
+- **Listen to window** plays the actual amber sample window, including its clamping to the take's boundaries.
+- **Stop** ends audition. A white dashed playback cursor shows progress while the amber needle stays at the chosen sampling point.
+- **Preview volume** changes listening volume only. It is not exported and does not alter detection, source files or display gain.
+
+Audition maps the timeline position back to the take's media source range. It stops at the current take's end instead of playing unused media beyond an edit. It is a short source-audio preview, not a mix of all tracks or a rendered preview with proposed cuts already skipped. Positioning in a gap or at the timeline end cannot start playback.
+
+Moving/clearing the needle, switching reference groups, changing the sample window, starting an analysis job or closing the review stops audition. Listening does not sample noise, recalculate proposals or apply a cut.
+
+Playback uses Qt Multimedia and requires a working audio output device and supported codec/backend. Its codec support is separate from the external FFmpeg executable used for analysis; changing `DECUT_FFMPEG` does not replace Qt's playback backend. Playback errors are shown beside the controls.
 
 ## Manual noise calibration
 
