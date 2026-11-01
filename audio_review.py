@@ -4,17 +4,18 @@ import math
 from pathlib import Path
 
 import opentimelineio as otio
-from PySide6.QtCore import Qt, QThread, Signal, QRectF, QTimer, QElapsedTimer, Slot
+from PySide6.QtCore import Qt, QThread, Signal, QRectF, QTimer, QElapsedTimer, Slot, QSignalBlocker
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QSplitter, QProgressBar, QTabWidget, QAbstractItemView,
+    QVBoxLayout, QWidget, QSplitter, QProgressBar, QTabWidget, QAbstractItemView, QSlider,
 )
 
 from audio_tools import measure_noise, sample_window, waveform_peaks
 from media_process import JobControl, AnalysisCancelled
 from noise_matching import learn_profile, find_similar_pauses, merge_intervals
+from timeline_time import timeline_frame_rate, frame_from_seconds, seconds_from_frame, last_frame_position
 
 
 def tc(value):
@@ -64,11 +65,13 @@ class SamplingWaveform(QWidget):
         super().__init__(parent)
         self.segments, self.cuts = [], []
         self.sample_markers = []
+        self.audition_cursor = None
         self.duration, self.cursor = 1.0, 0.0
         self.view_start, self.view_duration = 0.0, 1.0
         self.sample_width = .6
         self.display_gain = 2.0
         self.has_selection = False
+        self.frame_rate = 30.0
         self._panning = False
         self.setMinimumHeight(200)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -186,6 +189,10 @@ class SamplingWaveform(QWidget):
             painter.setPen(QPen(QColor("#e3b76c"), 2))
             x = int(self.x_at(self.cursor))
             painter.drawLine(x, 0, x, bottom)
+        if self.audition_cursor is not None:
+            painter.setPen(QPen(QColor("#e1ebe5"), 1, Qt.DashLine))
+            x = int(self.x_at(self.audition_cursor))
+            painter.drawLine(x, top, x, bottom)
         painter.setPen(QColor("#adb9b0"))
         for i in range(5):
             time = self.view_start + i * self.view_duration / 4
@@ -231,8 +238,12 @@ class SamplingWaveform(QWidget):
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Left, Qt.Key_Right):
             self.has_selection = True
-            delta = -.1 if event.key() == Qt.Key_Left else .1
-            self.cursor = max(0, min(self.duration, self.cursor + delta))
+            direction = -1 if event.key() == Qt.Key_Left else 1
+            if event.modifiers() & Qt.ControlModifier:
+                frame = frame_from_seconds(self.cursor, self.frame_rate) + direction
+                self.cursor = seconds_from_frame(max(0, min(last_frame_position(self.duration, self.frame_rate), frame)), self.frame_rate)
+            else:
+                self.cursor = max(0, min(self.duration, self.cursor + direction * .1))
             self.update()
             self.selected.emit(self.cursor)
         elif event.key() in (Qt.Key_Escape, Qt.Key_Delete):
@@ -267,6 +278,7 @@ class AudioReviewDialog(QDialog):
         self._pending_sample = None
         self._closing = False
         self._stage = "analysis"
+        self.audition = None
         self.resize(1100, 720)
         self.setWindowTitle(self.tr_text("Revisar e calibrar cortes", "Review and calibrate cuts"))
         layout = QVBoxLayout(self)
@@ -318,6 +330,7 @@ class AudioReviewDialog(QDialog):
         modes.addWidget(self.reset_samples_btn)
         layout.addLayout(modes)
         self.wave = SamplingWaveform()
+        self.wave.frame_rate = timeline_frame_rate(timeline)
         self.visual_gain.valueChanged.connect(self.wave.set_display_gain)
         splitter = QSplitter(Qt.Vertical)
         splitter.addWidget(self.wave)
@@ -371,11 +384,39 @@ class AudioReviewDialog(QDialog):
             controls.addWidget(QLabel(label))
             controls.addWidget(widget)
         form.addRow(controls)
-        sampling = QHBoxLayout()
+        navigation = QHBoxLayout()
         self.position = QDoubleSpinBox()
-        self.position.setDecimals(3)
+        self.position.setDecimals(6)
         self.position.setRange(0, max(.001, timeline.duration().to_seconds()))
         self.position.setSuffix(" s")
+        self.position.setKeyboardTracking(False)
+        self.position_frames = QSpinBox()
+        self.position_frames.setRange(0, min(2147483647, last_frame_position(self.position.maximum(), self.wave.frame_rate)))
+        self.position_frames.setKeyboardTracking(False)
+        self.position_frames.setToolTip(self.tr_text(
+            "Índice a partir de zero no tempo da timeline. Digitar um frame posiciona a agulha no início desse quadro.",
+            "Zero-based index in timeline time. Enter a frame to seek to its start."))
+        self.navigation_fps = QDoubleSpinBox()
+        self.navigation_fps.setRange(1, 240)
+        self.navigation_fps.setDecimals(8)
+        self.navigation_fps.setValue(self.wave.frame_rate)
+        self.navigation_fps.setKeyboardTracking(False)
+        self.wave.frame_rate = self.navigation_fps.value()
+        self.navigation_fps.setToolTip(self.tr_text(
+            "FPS detectado da timeline, não do arquivo de vídeo. Corrija se necessário. Afeta apenas a conversão/navegação, não reencoda nem altera os cortes.",
+            "Detected timeline FPS, not source-video FPS. Correct if needed. Affects navigation/conversion only; does not re-encode or change cuts."))
+        self.previous_frame_btn = QPushButton("−1 frame")
+        self.next_frame_btn = QPushButton("+1 frame")
+        navigation.addWidget(QLabel(self.tr_text("Agulha (segundos)", "Needle (seconds)")))
+        navigation.addWidget(self.position, 1)
+        navigation.addWidget(QLabel("Frame"))
+        navigation.addWidget(self.position_frames, 1)
+        navigation.addWidget(QLabel(self.tr_text("FPS de navegação", "Navigation FPS")))
+        navigation.addWidget(self.navigation_fps)
+        navigation.addWidget(self.previous_frame_btn)
+        navigation.addWidget(self.next_frame_btn)
+        form.addRow(navigation)
+        sampling = QHBoxLayout()
         self.window = QDoubleSpinBox()
         self.window.setRange(.1, 2)
         self.window.setSingleStep(.1)
@@ -387,8 +428,6 @@ class AudioReviewDialog(QDialog):
         self.preserve_btn.setToolTip(self.tr_text(
             "Desmarca os cortes propostos que contêm a posição da agulha. Pode reativá-los na lista.",
             "Uncheck proposed cuts containing the needle position. You can re-enable them in the list."))
-        sampling.addWidget(QLabel(self.tr_text("Agulha", "Needle")))
-        sampling.addWidget(self.position)
         sampling.addWidget(QLabel(self.tr_text("Janela", "Window")))
         sampling.addWidget(self.window)
         sampling.addWidget(self.sample_btn)
@@ -396,6 +435,25 @@ class AudioReviewDialog(QDialog):
         sampling.addWidget(self.preserve_btn)
         form.addRow(sampling)
         layout.addLayout(form)
+        playback = QHBoxLayout()
+        self.listen_btn = QPushButton(self.tr_text("Ouvir daqui (3 s)", "Listen from here (3 s)"))
+        self.listen_window_btn = QPushButton(self.tr_text("Ouvir janela", "Listen to window"))
+        self.stop_audio_btn = QPushButton(self.tr_text("Parar", "Stop"))
+        self.stop_audio_btn.setEnabled(False)
+        self.preview_volume = QSlider(Qt.Horizontal)
+        self.preview_volume.setRange(0, 100)
+        self.preview_volume.setValue(75)
+        self.preview_volume.setMaximumWidth(110)
+        self.preview_volume.setToolTip(self.tr_text("Volume só da prévia; não altera o áudio exportado.",
+                                                  "Preview volume only; does not change exported audio."))
+        self.audition_status = QLabel()
+        playback.addWidget(self.listen_btn)
+        playback.addWidget(self.listen_window_btn)
+        playback.addWidget(self.stop_audio_btn)
+        playback.addWidget(QLabel(self.tr_text("Volume da prévia", "Preview volume")))
+        playback.addWidget(self.preview_volume)
+        playback.addWidget(self.audition_status, 1)
+        layout.addLayout(playback)
         self.measurement = QLabel(self.tr_text("Nenhuma amostra ainda.", "No samples yet."))
         self.measurement.setWordWrap(True)
         layout.addWidget(self.measurement)
@@ -433,6 +491,14 @@ class AudioReviewDialog(QDialog):
         self.wave.selected.connect(self.needle_selected)
         self.wave.selection_cleared.connect(self.selection_cleared)
         self.position.valueChanged.connect(self.position_changed)
+        self.position_frames.valueChanged.connect(self.frame_position_changed)
+        self.navigation_fps.valueChanged.connect(self.navigation_rate_changed)
+        self.previous_frame_btn.clicked.connect(lambda: self.step_frame(-1))
+        self.next_frame_btn.clicked.connect(lambda: self.step_frame(1))
+        self.listen_btn.clicked.connect(lambda: self.listen_audio(False))
+        self.listen_window_btn.clicked.connect(lambda: self.listen_audio(True))
+        self.stop_audio_btn.clicked.connect(self.stop_audio)
+        self.preview_volume.valueChanged.connect(self.preview_volume_changed)
         self.window.valueChanged.connect(self.window_changed)
         self.reference.currentIndexChanged.connect(self.reference_changed)
         self.fit_btn.clicked.connect(self.wave.fit)
@@ -456,17 +522,21 @@ class AudioReviewDialog(QDialog):
         return en if self.lang == "en" else pt
 
     def set_busy(self, busy):
+        if busy:
+            self.stop_audio()
         self._busy = busy
         for widget in (self.reference, self.recalculate, self.sample_btn, self.mode, self.profile_count,
-                       self.threshold, self.minimum, self.padding, self.position, self.window,
-                       self.intervals, self.wave):
+                        self.threshold, self.minimum, self.padding, self.position, self.window,
+                        self.intervals, self.wave, self.position_frames, self.navigation_fps,
+                        self.previous_frame_btn, self.next_frame_btn):
             widget.setEnabled(not busy)
         samples_mode = self.mode.currentData() == "samples"
         self.threshold.setEnabled(not busy and not samples_mode)
         self.similarity.setEnabled(not busy and samples_mode)
         self.reset_samples_btn.setEnabled(not busy and samples_mode)
         self.cancel_btn.setEnabled(not self._closing)
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
+        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+                       self.listen_btn, self.listen_window_btn):
             button.setEnabled(not busy and self.wave.has_selection)
         self.confirm_sample_btn.setEnabled(not busy)
         self.cancel_btn.setText(self.tr_text("Cancelar e fechar", "Cancel and close") if busy
@@ -707,15 +777,18 @@ class AudioReviewDialog(QDialog):
         self.review_tabs.setCurrentIndex(0)
 
     def reference_changed(self):
+        self.stop_audio()
         self.clear_pending_sample()
         self.threshold.blockSignals(True)
         self.threshold.setValue(self.thresholds.get(self.group(), self.default_threshold))
         self.threshold.blockSignals(False)
         segments, duration = self.audio.get(self.group(), ([], 1))
-        self.position.setMaximum(duration)
+        with QSignalBlocker(self.position), QSignalBlocker(self.position_frames):
+            self.position.setMaximum(duration)
+            self.position_frames.setMaximum(min(2147483647, last_frame_position(duration, self.navigation_fps.value())))
         if self._displayed_group != self.group():
             self.wave.cursor = 0
-            self.position.setValue(0)
+            self.sync_position_controls(0)
             self.wave.set_audio(segments, duration)
             self._displayed_group = self.group()
         else:
@@ -723,7 +796,8 @@ class AudioReviewDialog(QDialog):
             self.wave.segments = segments
             self.wave.duration = duration
             self.wave.update()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
+        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+                       self.listen_btn, self.listen_window_btn):
             button.setEnabled(not self._busy and self.wave.has_selection)
         self.load_intervals()
         self.update_profile_count()
@@ -791,12 +865,41 @@ class AudioReviewDialog(QDialog):
         self.apply_btn.setEnabled(not self._busy and not self._dirty and any(self.cuts.values()))
 
     def position_changed(self, position):
+        self.set_needle_position(position)
+
+    def sync_position_controls(self, seconds):
+        with QSignalBlocker(self.position), QSignalBlocker(self.position_frames):
+            self.position.setValue(seconds)
+            self.position_frames.setValue(min(self.position_frames.maximum(), frame_from_seconds(seconds, self.navigation_fps.value())))
+
+    def set_needle_position(self, position):
+        self.stop_audio()
         self.clear_pending_sample()
+        position = max(0, min(self.wave.duration, position))
+        self.sync_position_controls(position)
         self.wave.cursor = position
         self.wave.has_selection = True
+        if not self.wave.view_start <= position <= self.wave.view_start + self.wave.view_duration:
+            self.wave.view_start = max(0, min(self.wave.duration - self.wave.view_duration,
+                                            position - self.wave.view_duration / 2))
         self.wave.update()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
+        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+                       self.listen_btn, self.listen_window_btn):
             button.setEnabled(not self._busy)
+
+    def frame_position_changed(self, frame):
+        self.set_needle_position(seconds_from_frame(frame, self.navigation_fps.value()))
+
+    def step_frame(self, direction):
+        frame = max(0, min(self.position_frames.maximum(), self.position_frames.value() + direction))
+        self.frame_position_changed(frame)
+
+    def navigation_rate_changed(self, fps):
+        # FPS is a display/navigation conversion. Preserve the selected time and plan.
+        self.wave.frame_rate = fps
+        with QSignalBlocker(self.position_frames):
+            self.position_frames.setMaximum(min(2147483647, last_frame_position(self.wave.duration, fps)))
+        self.sync_position_controls(self.wave.cursor)
 
     def window_changed(self, value):
         self.clear_pending_sample()
@@ -804,15 +907,61 @@ class AudioReviewDialog(QDialog):
         self.wave.update()
 
     def needle_selected(self, position):
-        self.position.setValue(position)
-        self.position_changed(self.position.value())
+        self.set_needle_position(position)
 
     def selection_cleared(self):
+        self.stop_audio()
         self.clear_pending_sample()
-        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn):
+        for button in (self.sample_btn, self.clear_needle_btn, self.preserve_btn,
+                       self.listen_btn, self.listen_window_btn):
             button.setEnabled(False)
         self.measurement.setText(self.tr_text(
             "Agulha limpa. Os cortes não foram alterados.", "Needle cleared. Cuts were not changed."))
+
+    def listen_audio(self, window_only=False):
+        if self._busy or not self.wave.has_selection:
+            return
+        try:
+            from audio_audition import AudioAudition, audition_range
+            target = audition_range(self.audio.get(self.group(), ([], 0))[0], self.wave.cursor,
+                                    window=self.window.value() if window_only else None)
+            if self.audition is None:
+                self.audition = AudioAudition(self)
+                self.audition.active_changed.connect(self.audition_state_changed)
+                self.audition.position_changed.connect(self.audition_position_changed)
+                self.audition.failed.connect(self.audition_failed)
+            self.audition.set_volume(self.preview_volume.value())
+            self.audition.play(target)
+        except Exception as error:
+            self.audition_failed(str(error))
+
+    def preview_volume_changed(self, value):
+        if self.audition is not None:
+            self.audition.set_volume(value)
+
+    def audition_state_changed(self, active):
+        self.stop_audio_btn.setEnabled(active)
+        if active:
+            self.audition_status.setText(self.tr_text("Carregando áudio…", "Loading audio…"))
+        else:
+            self.wave.audition_cursor = None
+            self.wave.update()
+            self.audition_status.clear()
+
+    def audition_position_changed(self, position):
+        self.wave.audition_cursor = position
+        self.wave.update()
+        frame = frame_from_seconds(position, self.navigation_fps.value())
+        self.audition_status.setText(f"{tc(position)} · frame {frame}")
+
+    def audition_failed(self, message):
+        self.audition_state_changed(False)
+        self.audition_status.setText(self.tr_text(f"Falha na prévia: {message}", f"Preview failed: {message}"))
+
+    def stop_audio(self):
+        if self.audition is not None:
+            self.audition.stop()
+        self.audition_state_changed(False)
 
     def preserve_selection(self):
         if self._busy or not self.wave.has_selection:
@@ -839,7 +988,7 @@ class AudioReviewDialog(QDialog):
             self.measurement.setText(self.tr_text("Posicione a agulha primeiro.", "Position the needle first."))
             return
         self.clear_pending_sample()
-        position, group = self.position.value(), self.group()
+        position, group = self.wave.cursor, self.group()
         segments = self.audio.get(group, ([], 0))[0]
         segment = next((s for s in segments if s["start"] <= position < s["start"] + s["duration"]), None)
         if segment is None:
@@ -944,6 +1093,8 @@ class AudioReviewDialog(QDialog):
     def request_close(self):
         """Close immediately when idle, or cancel FFmpeg and close after its worker exits."""
         self._closing = True
+        if self.audition is not None:
+            self.audition.shutdown()
         if self._busy:
             self.cancel_btn.setEnabled(False)
             self.cancel_btn.setText(self.tr_text("Cancelando…", "Cancelling…"))
@@ -956,4 +1107,6 @@ class AudioReviewDialog(QDialog):
             event.ignore()
             self.request_close()
         else:
+            if self.audition is not None:
+                self.audition.shutdown()
             super().closeEvent(event)
