@@ -14,7 +14,7 @@
   <releases>
     <release version="1.0.0" date="2026-11-01">
       <description>
-        <p>Review synchronized silence cuts with manual noise sampling, linear waveforms, protected regions, timeline compaction and export statistics.</p>
+        <p>Review synchronized silence cuts with manual noise sampling, incremental noise-profile matching, linear waveforms, protected regions, timeline compaction and export statistics.</p>
       </description>
     </release>
   </releases>
