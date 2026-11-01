@@ -1,5 +1,9 @@
 # decut OTIO silence cutter
 
+<p align="center">
+  <img src="assets/decut.svg" alt="decut logo" width="128">
+</p>
+
 A Python desktop tool for removing silence from Kdenlive timelines without rendering an intermediate video.
 
 ## Screenshots
