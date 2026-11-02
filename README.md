@@ -89,7 +89,7 @@ The AppImage bundles the Python application and Qt dependencies. FFmpeg is inclu
 ## Kdenlive → decut → Kdenlive
 
 1. Import and synchronize your media in Kdenlive.
-2. Export the timeline as **OpenTimelineIO (`.otio`)**.
+2. Export the timeline as **OpenTimelineIO (`.otio`)**, or open the `.kdenlive` project directly when compacting its real blank gaps.
 3. Open it in decut and assign matching video/audio tracks to a group.
 4. Mark **Analyze** on **one reference track per group**, usually the microphone. Leave game audio unchecked.
 5. Click **Preview cuts** or **Remove silence**. Both open the same nondestructive review window.
