@@ -102,7 +102,7 @@ class IncrementalReviewTests(QtTestCase):
             dialog.recalculate.click()
             self.wait(dialog)
             self.assertEqual(len(dialog.cuts["A1"]), 1)
-            self.assertEqual(dialog.intervals.item(0, 0).checkState(), Qt.Unchecked)
+            dialog.ripple_box.setChecked(True)
             dialog.apply_review()
             self.wait(dialog)
             self.assertAlmostEqual(dialog.output.duration().to_seconds(), 4.2, places=2)

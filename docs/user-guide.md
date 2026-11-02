@@ -55,7 +55,14 @@ The analysis uses FFmpeg `silencedetect` on the first audio stream (`0:a:0`) of 
 6. Choose **Apply reviewed cuts** to commit the selected plan to the current in-memory timeline.
 7. Return to the main window and export an OTIO file.
 
-The reviewed plan is applied directly. Applying does not rerun silence detection and substitute a different set of cuts. Cut intervals close within their groups automatically; you do not need a separate compaction pass for those intervals.
+The reviewed plan is applied directly. Applying does not rerun silence detection and substitute a different set of cuts.
+
+Before Apply, choose **Close gaps after applying**:
+
+- **Off (default):** remove the source content inside red intervals but preserve an explicit OTIO `Gap` at the same timeline position. This keeps timing editable in Kdenlive.
+- **On:** ripple the surviving clips together and close the interval.
+
+This option changes only how the already reviewed red intervals are written. It does not change detection, VAD, samples or the waveform, and changing it does not mark the preview stale. Red overlays never enter the exported OTIO; the export contains clips and, when selected, explicit OTIO gaps.
 
 Applying again in a new review works on the already-edited in-memory timeline. Reopen the original OTIO if you want to start from the original edit. There is no general undo history.
 

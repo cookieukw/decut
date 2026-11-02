@@ -17,6 +17,7 @@ from waveform_cache import load_waveform, save_waveform
 from media_process import JobControl, AnalysisCancelled
 from noise_matching import learn_profile, find_similar_pauses, merge_intervals
 from timeline_time import timeline_frame_rate, frame_from_seconds, seconds_from_frame, last_frame_position
+from app_version import __version__
 
 
 def tc(value):
@@ -72,6 +73,7 @@ class SamplingWaveform(QWidget):
         self.sample_width = .6
         self.display_gain = 2.0
         self.has_selection = False
+        self.status_message = ""
         self.frame_rate = 30.0
         self._panning = False
         self.setMinimumHeight(200)
@@ -83,7 +85,16 @@ class SamplingWaveform(QWidget):
         self.segments = segments
         self.duration = max(duration, .001)
         self.has_selection = False
+        self.status_message = "" if segments else "No waveform data available"
         self.fit()
+
+    def set_loading(self, loading):
+        self.status_message = "Generating waveform…" if loading else ""
+        self.update()
+
+    def set_message(self, message):
+        self.status_message = message
+        self.update()
 
     def fit(self):
         self.view_start, self.view_duration = 0.0, self.duration
@@ -115,6 +126,10 @@ class SamplingWaveform(QWidget):
         top = 24
         mid = (top + bottom) / 2
         radius = (bottom - top) * .44
+        if self.status_message and not self.segments:
+            painter.setPen(QColor("#a7b8ab"))
+            painter.drawText(self.rect(), Qt.AlignCenter, self.status_message)
+            return
         for segment in self.segments:
             clip_left = max(0, self.x_at(segment["start"]))
             clip_right = min(self.width(), self.x_at(segment["start"] + segment["duration"]))
@@ -147,7 +162,12 @@ class SamplingWaveform(QWidget):
                 continue
             first = max(0, int((self.view_start - segment["start"]) / step))
             last = min(len(peaks), math.ceil((self.view_start + self.view_duration - segment["start"]) / step))
-            stride = max(1, math.ceil(max(0, last - first) / max(1, self.width())))
+            # Downsample to the pixels occupied by this take, not the whole
+            # widget. Exported OTIO can contain hundreds of short clips; using
+            # widget width here made Fit waveform paint tens of thousands of
+            # invisible sub-pixel lines and appear frozen.
+            segment_pixels = max(1, int(clip_right - clip_left))
+            stride = max(1, math.ceil(max(0, last - first) / segment_pixels))
             points = []
             for i in range(first, last, stride):
                 peak = max(peaks[i:min(last, i + stride)], default=0)
@@ -265,7 +285,7 @@ class SamplingWaveform(QWidget):
 class AudioReviewDialog(QDialog):
     def __init__(self, timeline, assignments, threshold, minimum, padding,
                  collect_cuts, apply_cuts, media_path, language="pt", parent=None,
-                 protect_speech=False):
+                 protect_speech=False, default_mode="threshold"):
         super().__init__(parent)
         # The parent is disabled while this dialog is open. Keep a read-only
         # reference; copying a large OTIO here would block the GUI on opening.
@@ -278,6 +298,7 @@ class AudioReviewDialog(QDialog):
         self.speech_cache = {}
         self.thresholds = {}
         self.cuts, self.audio, self.cache, self.wave_cache = {}, {}, {}, {}
+        self.manual_cuts = {}
         self.review_rows = {}
         self.protected_ranges = {}
         self.noise_profiles = {}
@@ -294,18 +315,35 @@ class AudioReviewDialog(QDialog):
         self.audition = None
         self.resize(1100, 700)
         self.setMinimumSize(980, 640)
-        self.setWindowTitle(self.tr_text("Revisar e calibrar cortes", "Review and calibrate cuts"))
+        self.setWindowTitle(f"decut {__version__} · " + self.tr_text("Revisar e calibrar cortes", "Review and calibrate cuts"))
         layout = QVBoxLayout(self)
         self.hint = QLabel(self.tr_text(
             "Posicione a agulha, clique em Medir aqui e depois em Recalcular prévia. Mover a agulha não calcula nem cria cortes.",
             "Position the needle, click Sample here, then Recalculate preview. Moving the needle does not analyze or create cuts."))
         self.hint.setWordWrap(True)
         layout.addWidget(self.hint)
+        self.top_progress_text = QLabel()
+        self.top_progress_bar = QProgressBar()
+        self.top_progress_bar.setMaximumHeight(7)
+        self.top_progress_bar.setRange(0, 0)
+        self.top_progress_text.hide()
+        self.top_progress_bar.hide()
+        top_progress_layout = QVBoxLayout()
+        top_progress_layout.setContentsMargins(0, 0, 0, 0)
+        top_progress_layout.setSpacing(1)
+        top_progress_layout.addWidget(self.top_progress_text)
+        top_progress_layout.addWidget(self.top_progress_bar)
+        self.top_progress_container = QWidget()
+        self.top_progress_container.setLayout(top_progress_layout)
+        self.top_progress_container.setFixedHeight(22)
+        layout.addWidget(self.top_progress_container)
         top = QHBoxLayout()
         self.reference = QComboBox()
         for entry in assignments:
             if entry["analyze"] and entry["group"]:
                 track = timeline.tracks[entry["index"]]
+                if not len(track):
+                    continue
                 self.reference.addItem(f"{entry['group']} · {track.name or entry['index'] + 1}", entry)
         top.addWidget(self.reference, 1)
         self.visual_gain = QDoubleSpinBox()
@@ -325,6 +363,7 @@ class AudioReviewDialog(QDialog):
         self.mode = QComboBox()
         self.mode.addItem(self.tr_text("Limiar de volume (atual)", "Volume threshold (existing)"), "threshold")
         self.mode.addItem(self.tr_text("Amostras semelhantes (incremental)", "Similar samples (incremental)"), "samples")
+        self.mode.setCurrentIndex(1 if default_mode == "samples" else 0)
         self.mode.setToolTip(self.tr_text(
             "Limiar substitui propostas. Amostras acumula regiões com nível e textura semelhantes ao ruído medido. Não reconhece palavras.",
             "Threshold replaces proposals. Samples accumulates regions with similar measured noise level and texture. Does not recognize words."))
@@ -397,6 +436,11 @@ class AudioReviewDialog(QDialog):
         self.protect_speech_box.setToolTip(self.tr_text(
             "WebRTC VAD impede cortar regiões onde pode haver voz. Usa CPU, mas pouca RAM.",
             "WebRTC VAD prevents cuts where voice may be present. It uses CPU but little RAM."))
+        self.ripple_box = QCheckBox(self.tr_text("Fechar gaps após aplicar", "Close gaps after applying"))
+        self.ripple_box.setChecked(False)
+        self.ripple_box.setToolTip(self.tr_text(
+            "Desmarcado: remove o conteúdo vermelho e mantém o espaço vazio. Marcado: junta os takes e faz ripple.",
+            "Unchecked: removes red content and keeps the empty space. Checked: joins takes and ripples."))
         self.padding = QSpinBox()
         self.padding.setRange(0, 2000)
         self.padding.setValue(round(padding * 1000))
@@ -407,6 +451,7 @@ class AudioReviewDialog(QDialog):
             controls.addWidget(QLabel(label))
             controls.addWidget(widget)
         controls.addWidget(self.protect_speech_box)
+        controls.addWidget(self.ripple_box)
         form.addRow(controls)
         navigation = QHBoxLayout()
         self.position = QDoubleSpinBox()
@@ -501,10 +546,17 @@ class AudioReviewDialog(QDialog):
         self.progress_text = QLabel()
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
-        layout.addWidget(self.progress_text)
-        layout.addWidget(self.progress_bar)
         self.progress_text.hide()
         self.progress_bar.hide()
+        bottom_progress_layout = QVBoxLayout()
+        bottom_progress_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_progress_layout.setSpacing(1)
+        bottom_progress_layout.addWidget(self.progress_text)
+        bottom_progress_layout.addWidget(self.progress_bar)
+        self.bottom_progress_container = QWidget()
+        self.bottom_progress_container.setLayout(bottom_progress_layout)
+        self.bottom_progress_container.setFixedHeight(22)
+        layout.addWidget(self.bottom_progress_container)
         self.elapsed = QElapsedTimer()
         self.progress_timer = QTimer(self)
         self.progress_timer.setInterval(500)
@@ -561,6 +613,7 @@ class AudioReviewDialog(QDialog):
         if busy:
             self.stop_audio()
         self._busy = busy
+        self.wave.set_loading(busy)
         for widget in (self.reference, self.recalculate, self.sample_btn, self.remove_sample_btn, self.mode, self.profile_count,
                         self.threshold, self.minimum, self.padding, self.position, self.window,
                         self.intervals, self.wave, self.position_frames, self.navigation_fps,
@@ -589,6 +642,9 @@ class AudioReviewDialog(QDialog):
         self.progress_bar.setRange(0, 0)
         self.progress_bar.show()
         self.progress_text.show()
+        self.top_progress_bar.setRange(0, 0)
+        self.top_progress_bar.show()
+        self.top_progress_text.show()
         self.progress_timer.start()
         self.update_progress_text()
         self.job = ReviewJob(task, callback, self)
@@ -617,7 +673,12 @@ class AudioReviewDialog(QDialog):
             "matching": self.tr_text("Buscando ruídos semelhantes", "Finding similar noise"),
         }
         text = stages.get(self._stage, self._stage)
-        self.progress_text.setText(f"{text} · {self.elapsed.elapsed() / 1000:.0f}s")
+        value = f"{text} · {self.elapsed.elapsed() / 1000:.0f}s"
+        self.progress_text.setText(value)
+        self.top_progress_text.setText(value)
+        if self.progress_bar.maximum() > 0:
+            self.top_progress_bar.setRange(self.progress_bar.minimum(), self.progress_bar.maximum())
+            self.top_progress_bar.setValue(self.progress_bar.value())
 
     @Slot()
     def finish_job(self):
@@ -628,6 +689,8 @@ class AudioReviewDialog(QDialog):
         self.progress_timer.stop()
         self.progress_bar.hide()
         self.progress_text.hide()
+        self.top_progress_bar.hide()
+        self.top_progress_text.hide()
         self.set_busy(False)
         if self._closing:
             super().reject()
@@ -635,6 +698,7 @@ class AudioReviewDialog(QDialog):
         if error:
             self._dirty = True
             self.summary.setText(str(error))
+            self.wave.set_message(str(error))
             self.apply_btn.setEnabled(False)
             return
         callback(data)
@@ -667,20 +731,18 @@ class AudioReviewDialog(QDialog):
 
     def visible_samples(self):
         return [record for record in self.sample_records
-                if record["group"] == self.group() and record["mode"] == self.mode.currentData()]
+                if record["group"] == self.group()]
 
     def update_sample_indicators(self):
         rows = self.visible_samples()
         count = len(rows)
-        incremental = self.mode.currentData() == "samples"
-        if incremental:
-            self.profile_count.setText(self.tr_text(f"Amostras: {count} · Ver lista", f"Samples: {count} · View list"))
-            hint = self.tr_text("Perfis usados na busca incremental. Clique numa linha para localizar na onda.",
-                                "Profiles used by incremental matching. Click a row to locate it on the waveform.")
-        else:
-            self.profile_count.setText(self.tr_text(f"Medições: {count} · Ver lista", f"Measurements: {count} · View list"))
-            hint = self.tr_text("Histórico de medições do modo limiar; não são perfis de similaridade. A última medição sugere o limiar.",
-                                "Threshold measurement history, not similarity profiles. The latest measurement suggests a threshold.")
+        profile_count = sum(record["mode"] == "samples" for record in rows)
+        threshold_count = count - profile_count
+        self.profile_count.setText(self.tr_text(
+            f"Amostras visíveis: {count} · Ver lista", f"Visible samples: {count} · View list"))
+        hint = self.tr_text(
+            f"{profile_count} perfil(is) incremental(is) e {threshold_count} medição(ões) de limiar. As posições ficam visíveis ao trocar de modo.",
+            f"{profile_count} incremental profile(s) and {threshold_count} threshold measurement(s). Positions stay visible when switching modes.")
         if not rows:
             hint += self.tr_text(" Nenhuma amostra neste modo/grupo. Posicione a agulha e clique em Medir aqui.",
                                   " No samples in this mode/group. Position the needle and click Sample here.")
@@ -688,8 +750,8 @@ class AudioReviewDialog(QDialog):
         self.review_tabs.setTabText(1, self.tr_text(f"Amostras salvas ({count})", f"Saved samples ({count})"))
         self.samples_table.setRowCount(count)
         for row, record in enumerate(rows):
-            usage = (self.tr_text("Perfil de similaridade", "Similarity profile") if incremental
-                     else self.tr_text("Sugestão de limiar", "Threshold suggestion"))
+            usage = (self.tr_text("Perfil de similaridade", "Similarity profile")
+                     if record["mode"] == "samples" else self.tr_text("Sugestão de limiar", "Threshold suggestion"))
             values = [f"#{record['number']}", tc(record["position"]),
                       f"{record['end'] - record['start']:.3f} s", f"{record['peak']:.1f} dB",
                       f"{record['mean']:.1f} dB", usage]
@@ -729,13 +791,18 @@ class AudioReviewDialog(QDialog):
     def refresh(self):
         if self._busy or not self.reference.count():
             return
+        # Preserve every unchecked interval before starting a background
+        # recalculation, including intervals that came from a direct sample.
+        for start, end, enabled in self.review_rows.get(self.group(), []):
+            if not enabled:
+                self.protected_ranges.setdefault(self.group(), []).append((start, end))
+        self.protected_ranges[self.group()] = merge_intervals(self.protected_ranges.get(self.group(), []))
         mode = self.mode.currentData()
-        if mode == "samples" and not any(self.noise_profiles.values()):
+        no_profiles = mode == "samples" and not any(self.noise_profiles.values())
+        if no_profiles:
             self.summary.setText(self.tr_text(
-                "Adicione uma amostra com Medir aqui antes de buscar trechos semelhantes.",
-                "Add a sample with Sample here before searching for similar regions."))
-            self.apply_btn.setEnabled(False)
-            return
+                "Waveform carregando. Adicione uma amostra com Medir aqui para buscar trechos semelhantes.",
+                "Waveform loading. Add a sample with Sample here to search for similar regions."))
         self.thresholds[self.group()] = self.threshold.value()
         thresholds = dict(self.thresholds)
         profiles = copy.deepcopy(self.noise_profiles)
@@ -814,10 +881,23 @@ class AudioReviewDialog(QDialog):
             protected = self.protected_ranges.get(group, [])
             rows = [(start, end, not any(start < b and end > a for a, b in protected))
                     for start, end in cuts]
-            self.review_rows[group] = rows
-            self.cuts[group] = [(start, end) for start, end, enabled in rows if enabled]
+            manual = self.manual_cuts.get(group, [])
+            existing = [(start, end) for start, end, enabled in rows if enabled]
+            combined = merge_intervals(existing + manual)
+            protected = self.protected_ranges.get(group, [])
+            review_rows = [(start, end, not any(start < b and end > a for a, b in protected))
+                           for start, end in combined]
+            self.review_rows[group] = review_rows
+            self.cuts[group] = [(start, end) for start, end, enabled in review_rows if enabled]
         self.reference_changed()
         self.review_tabs.setCurrentIndex(0)
+        if not self.audio.get(self.group(), ([], 0))[0]:
+            self.wave.set_message(self.tr_text(
+                "A track de referência não contém clips de áudio válidos.",
+                "The reference track contains no valid audio clips."))
+            self.summary.setText(self.tr_text(
+                "Nenhuma waveform foi carregada. Escolha uma track de áudio com clips.",
+                "No waveform was loaded. Choose an audio track containing clips."))
         if self.mode.currentData() == "samples" and self.noise_profiles.get(self.group()) and not any(self.cuts.values()):
             self.summary.setText(self.tr_text(
                 "Nenhum trecho semelhante ficou liberado. Se o áudio foi limpo/zerado, desative Proteger fala (VAD) ou escolha Mais ampla e recalcule.",
@@ -1051,6 +1131,7 @@ class AudioReviewDialog(QDialog):
                                         self.wave.cursor, self.window.value())
         interval = (start, start + duration)
         self.cuts[group] = merge_intervals(self.cuts.get(group, []) + [interval])
+        self.manual_cuts[group] = merge_intervals(self.manual_cuts.get(group, []) + [interval])
         self.review_rows[group] = [(a, b, True) for a, b in self.cuts[group]]
         if self.mode.currentData() == "samples":
             self.incremental_cuts[group] = merge_intervals(self.incremental_cuts.get(group, []) + [interval])
@@ -1174,7 +1255,8 @@ class AudioReviewDialog(QDialog):
         if self._busy or not self.apply_btn.isEnabled():
             return
         cuts = copy.deepcopy(self.cuts)
-        self.start_job(lambda control: self.apply_cuts(self.timeline, self.assignments, cuts, control),
+        ripple = self.ripple_box.isChecked()
+        self.start_job(lambda control: self.apply_cuts(self.timeline, self.assignments, cuts, control, ripple),
                        self.applied)
 
     def applied(self, result):

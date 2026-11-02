@@ -58,6 +58,17 @@ class PipelineTests(unittest.TestCase):
                 {"index": 1, "group": "A1", "analyze": True},
             ], -45, 1, .18)
 
+    def test_apply_can_keep_removed_ranges_as_gaps(self):
+        track = otio.schema.Track(name="v", kind="Video")
+        track.append(clip(0, 10, "/tmp/video"))
+        timeline = otio.schema.Timeline(); timeline.tracks.append(track)
+        output, _ = __import__('otio_cutter').apply_group_cuts(
+            timeline, [{"index": 0, "group": "A1", "analyze": False}], {"A1": [(3, 5)]}, ripple=False)
+        self.assertAlmostEqual(output.tracks[0].duration().to_seconds(), 10)
+        self.assertEqual(len(output.tracks[0]), 3)
+        self.assertIsInstance(output.tracks[0][1], otio.schema.Gap)
+        self.assertAlmostEqual(output.tracks[0][1].duration().to_seconds(), 2)
+
 
 class ExportTests(QtTestCase):
     @classmethod

@@ -39,6 +39,7 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
 - Optional WebRTC VAD speech guard that protects possible voice from automatic cuts.
 - Clear no-match feedback when VAD protects all matches in aggressively denoised audio.
+- Explicit choice to preserve removed intervals as editable gaps or ripple them closed on apply.
 - Numbered blue sample markers and a saved-samples table with time, duration and measured levels.
 - Separate **Sample here**, **Recalculate preview** and **Apply reviewed cuts** actions.
 - Editable cut boundaries, individual checkboxes and **Keep this region** protection.
@@ -93,7 +94,7 @@ The AppImage bundles the Python application and Qt dependencies. FFmpeg is inclu
 4. Mark **Analyze** on **one reference track per group**, usually the microphone. Leave game audio unchecked.
 5. Click **Preview cuts** or **Remove silence**. Both open the same nondestructive review window.
 6. Inspect the red regions. Optionally sample noise and recalculate, edit boundaries or uncheck cuts.
-7. Click **Apply reviewed cuts**. Selected intervals are removed and closed across the group's tracks together.
+7. Choose whether to close gaps, then click **Apply reviewed cuts**. Selected intervals are removed across the group's tracks together; closing gaps is optional.
 8. Export the result and import the new `.otio` in Kdenlive. Render your final video there.
 
 Example:
@@ -119,6 +120,8 @@ Choose **Volume threshold (existing)** to replace proposals when recalculating, 
 3. Click **Recalculate preview** to generate new proposals. Until then, Apply is disabled when the settings are stale.
 4. Uncheck cuts, edit start/end times or choose **Keep this region** at the needle. Protected regions remain unchecked on subsequent recalculations in that review.
 5. Click **Apply reviewed cuts** only when satisfied. **Close without applying** discards the review's pending edits.
+
+**Close gaps after applying** is unchecked by default. Leave it off to remove the red source content while keeping an explicit editable gap at the same timeline position. Turn it on to ripple the surviving clips together. This choice does not recalculate detection or change the reviewed red intervals.
 
 **Clear needle**, `Esc` or `Delete` hides the needle and amber sample window without changing cuts. The amber area is **not** a deletion. Only checked red intervals are applied.
 

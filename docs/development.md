@@ -58,7 +58,7 @@ The launcher uses `.venv/bin/python`. On systems with externally managed Python 
 5. Map media time to timeline time and round detected boundaries inward to timeline frames.
 6. Merge overlapping proposals within each group.
 7. Display and edit that plan without changing the timeline.
-8. Apply the confirmed plan with `apply_group_cuts`, which splits surviving source ranges and closes the removed intervals on each group member.
+8. Apply the confirmed plan with `apply_group_cuts`, which splits surviving source ranges and either preserves explicit `Gap` items or ripples them out according to the review's `ripple` flag.
 
 Do not add a separate global video compaction after group-based silence edits: it can delete valid content belonging to another group or a longer audio track.
 
