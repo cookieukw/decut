@@ -7,7 +7,7 @@ import opentimelineio as otio
 from PySide6.QtCore import Qt, QThread, Signal, QRectF, QTimer, QElapsedTimer, Slot, QSignalBlocker
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QSplitter, QProgressBar, QTabWidget, QAbstractItemView, QSlider, QLayout,
 )
@@ -254,7 +254,8 @@ class SamplingWaveform(QWidget):
 
 class AudioReviewDialog(QDialog):
     def __init__(self, timeline, assignments, threshold, minimum, padding,
-                 collect_cuts, apply_cuts, media_path, language="pt", parent=None):
+                 collect_cuts, apply_cuts, media_path, language="pt", parent=None,
+                 protect_speech=False):
         super().__init__(parent)
         # The parent is disabled while this dialog is open. Keep a read-only
         # reference; copying a large OTIO here would block the GUI on opening.
@@ -263,6 +264,8 @@ class AudioReviewDialog(QDialog):
         self.collect_cuts, self.apply_cuts, self.media_path = collect_cuts, apply_cuts, media_path
         self.lang = language
         self.default_threshold = threshold
+        self.protect_speech = protect_speech
+        self.speech_cache = {}
         self.thresholds = {}
         self.cuts, self.audio, self.cache, self.wave_cache = {}, {}, {}, {}
         self.review_rows = {}
@@ -379,6 +382,11 @@ class AudioReviewDialog(QDialog):
         self.minimum.setRange(.05, 30)
         self.minimum.setValue(minimum)
         self.minimum.setSuffix(" s")
+        self.protect_speech_box = QCheckBox(self.tr_text("Proteger fala (VAD)", "Protect speech (VAD)"))
+        self.protect_speech_box.setChecked(protect_speech)
+        self.protect_speech_box.setToolTip(self.tr_text(
+            "WebRTC VAD impede cortar regiões onde pode haver voz. Usa CPU, mas pouca RAM.",
+            "WebRTC VAD prevents cuts where voice may be present. It uses CPU but little RAM."))
         self.padding = QSpinBox()
         self.padding.setRange(0, 2000)
         self.padding.setValue(round(padding * 1000))
@@ -388,6 +396,7 @@ class AudioReviewDialog(QDialog):
                               (self.tr_text("Proteção", "Protection"), self.padding)]:
             controls.addWidget(QLabel(label))
             controls.addWidget(widget)
+        controls.addWidget(self.protect_speech_box)
         form.addRow(controls)
         navigation = QHBoxLayout()
         self.position = QDoubleSpinBox()
@@ -529,6 +538,7 @@ class AudioReviewDialog(QDialog):
         self.threshold.valueChanged.connect(self.invalidate)
         self.minimum.valueChanged.connect(self.invalidate)
         self.padding.valueChanged.connect(self.invalidate)
+        self.protect_speech_box.toggled.connect(self.invalidate)
         self.intervals.itemChanged.connect(self.interval_changed)
         self.update_sample_indicators()
         self.refresh()
@@ -748,7 +758,9 @@ class AudioReviewDialog(QDialog):
 
             kwargs = {"interval_provider": provider} if mode == "samples" else {}
             cuts = self.collect_cuts(self.timeline, self.assignments, self.default_threshold,
-                                     minimum, padding, thresholds, self.cache, control=control, **kwargs)
+                                     minimum, padding, thresholds, self.cache, control=control,
+                                     protect_speech=self.protect_speech_box.isChecked(),
+                                     speech_cache=self.speech_cache, **kwargs)
             if mode == "samples":
                 cuts = {group: merge_intervals(accumulated.get(group, []) + ranges)
                         for group, ranges in cuts.items()}

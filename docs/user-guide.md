@@ -35,6 +35,8 @@ Open **Show advanced options** in the main window. These settings are also edita
 | Minimum pause | 0.05 to 30 seconds | 1.0 second | Shorter pauses are not detected. |
 | Protection | 0 to 2000 ms | 180 ms | Preserve this amount at both ends of a detected silence. |
 
+**Protect speech (VAD)** is enabled by default in the desktop UI. It adds a lightweight WebRTC voice-activity pass after FFmpeg silence detection. Candidate silence that overlaps possible voice is kept instead of cut. This can leave more pauses on noisy recordings, but is safer for quiet speech. It can be toggled in advanced detection settings and the review window.
+
 For example, a two-second silence with 180 ms protection on each side yields at most 1.64 seconds of removal, before frame alignment. If protection consumes the whole interval, no cut is proposed.
 
 The default is intentionally conservative and can leave pauses containing background noise. There is no universal safe threshold for every microphone or speaker.

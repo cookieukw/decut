@@ -36,6 +36,7 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Local audio audition from the needle or the exact sampling window, with preview-only volume.
 - Manual noise sampling: moving the needle never starts calibration or creates a cut.
 - Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
+- Optional WebRTC VAD speech guard that protects possible voice from automatic cuts.
 - Numbered blue sample markers and a saved-samples table with time, duration and measured levels.
 - Separate **Sample here**, **Recalculate preview** and **Apply reviewed cuts** actions.
 - Editable cut boundaries, individual checkboxes and **Keep this region** protection.
@@ -44,7 +45,7 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Suggested export filenames and a remembered export folder.
 - Portuguese and English interface, cancellable background work and Linux AppImage packaging.
 
-> Detection is amplitude-based, not speech recognition. Quiet speech can be mistaken for silence. Always review the proposed cuts and keep your original timeline.
+> Detection is amplitude-based, not speech recognition. Quiet speech can be mistaken for silence. With **Protect speech (VAD)** enabled, possible voice is removed from silence candidates using a lightweight WebRTC VAD pass. It is a safety guard, not a transcript; always review proposed cuts and keep your original timeline.
 
 ## Quick start
 

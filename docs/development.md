@@ -23,6 +23,7 @@ audio_audition.py       Qt Multimedia playback and source-range audition mapping
 timeline_time.py        Timeline FPS detection and seconds/frame conversion
 media_process.py        Cancellation and FFmpeg subprocess ownership
 noise_matching.py       Incremental acoustic noise-profile comparison
+speech_vad.py           Streaming WebRTC VAD speech guard
 run_otio_tool.sh        Source launcher
 build_appimage.sh       AppImage build orchestration
 decut.spec              Authoritative PyInstaller bundle recipe
@@ -63,6 +64,8 @@ Do not add a separate global video compaction after group-based silence edits: i
 ### Compaction
 
 `compact_timeline` computes the occupied-time union from the chosen reference tracks. The complement within their duration supplies the gap cuts. Those cuts are rippled out globally. This is independent of signal amplitude and does not depend on group assignments.
+
+When enabled, `speech_vad.voice_segments` streams mono 16 kHz signed PCM in 30 ms frames into `webrtcvad`. Voice intervals are merged with a 250 ms gap and subtracted from `silencedetect` intervals before protection/frame mapping. The default mode is 2. The UI explicitly enables this safety guard by default; standalone pipeline callers can leave the API default disabled for backward compatibility.
 
 ### Waveforms and calibration
 

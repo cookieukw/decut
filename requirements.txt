@@ -2,3 +2,4 @@ OpenTimelineIO==0.18.1
 PySide6>=6.6
 numpy>=1.26
 scipy>=1.11
+webrtcvad-wheels>=2.0.14

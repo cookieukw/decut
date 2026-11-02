@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from audio_review import AudioReviewDialog
 from app_version import __version__
 from media_process import managed_process
+from speech_vad import voice_segments, remove_voice_from_silences
 
 
 def seconds(value) -> float:
@@ -144,7 +145,8 @@ def rebuild_track(track: otio.schema.Track, cuts: list[tuple[float, float]], con
 
 
 def collect_group_cuts(timeline, assignments, threshold, minimum, padding,
-                       thresholds=None, media_cache=None, control=None, interval_provider=None):
+                       thresholds=None, media_cache=None, control=None, interval_provider=None,
+                       protect_speech=False, speech_cache=None, vad_mode=2):
     """Prepare decisions without editing the timeline; used by preview and export."""
     padding = max(0.0, float(padding))
     cuts_by_group: dict[str, list[tuple[float, float]]] = {}
@@ -163,6 +165,7 @@ def collect_group_cuts(timeline, assignments, threshold, minimum, padding,
     rate = next((child.duration().rate for track in tracks for child in track
                  if child.duration().rate > 0), 30.0)
     cache = media_cache if media_cache is not None else {}
+    speech_cache = speech_cache if speech_cache is not None else {}
     thresholds = thresholds or {}
     for item in assignments:
         if not item["analyze"] or not item["group"]:
@@ -192,6 +195,10 @@ def collect_group_cuts(timeline, assignments, threshold, minimum, padding,
                             cache[cache_key] = (detect_silence(path, group_threshold, minimum, control)
                                                 if control else detect_silence(path, group_threshold, minimum))
                         intervals = cache[cache_key]
+                    if protect_speech:
+                        if path not in speech_cache:
+                            speech_cache[path] = voice_segments(path, vad_mode, control)
+                        intervals = remove_voice_from_silences(intervals, speech_cache[path])
                     for start, end in intervals:
                         # Protection belongs INSIDE the silence: preserve speech
                         # on either side instead of expanding into spoken words.
@@ -310,19 +317,24 @@ class MainWindow(QMainWindow):
         self.title = QLabel("Abra uma timeline exportada pelo Kdenlive"); self.title.setObjectName("title"); layout.addWidget(self.title)
         self.table = QTableWidget(0, 4); self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table)
         self.advanced_btn = QPushButton(); self.advanced_btn.setCheckable(True); self.advanced_btn.setChecked(False); layout.addWidget(self.advanced_btn)
-        settings = QGroupBox(); form = QFormLayout(settings); self.settings = settings; self.threshold = QSpinBox(); self.threshold.setRange(-80, 0); self.threshold.setValue(-50); self.minimum = QDoubleSpinBox(); self.minimum.setRange(.05, 30); self.minimum.setSingleStep(.05); self.minimum.setValue(1.0); self.padding = QSpinBox(); self.padding.setRange(0, 2000); self.padding.setValue(180); self.threshold_label = QLabel(); self.minimum_label = QLabel(); self.padding_label = QLabel(); form.addRow(self.threshold_label, self.threshold); form.addRow(self.minimum_label, self.minimum); form.addRow(self.padding_label, self.padding); layout.addWidget(settings)
+        settings = QGroupBox(); form = QFormLayout(settings); self.settings = settings; self.threshold = QSpinBox(); self.threshold.setRange(-80, 0); self.threshold.setValue(-50); self.minimum = QDoubleSpinBox(); self.minimum.setRange(.05, 30); self.minimum.setSingleStep(.05); self.minimum.setValue(1.0); self.padding = QSpinBox(); self.padding.setRange(0, 2000); self.padding.setValue(180); self.protect_speech = QCheckBox("Proteger fala (VAD)"); self.protect_speech.setChecked(True); self.protect_speech.setToolTip("WebRTC VAD protege regiões com possível fala usando pouca memória."); self.threshold_label = QLabel(); self.minimum_label = QLabel(); self.padding_label = QLabel(); form.addRow(self.threshold_label, self.threshold); form.addRow(self.minimum_label, self.minimum); form.addRow(self.padding_label, self.padding); form.addRow(self.protect_speech); layout.addWidget(settings)
         compact_box = QGroupBox(); compact_form = QFormLayout(compact_box); self.compact_box = compact_box; self.compact_mode = QComboBox(); self.compact_mode.addItem("Vídeo define os buracos", "video"); self.compact_mode.addItem("Só gaps vazios em todas as tracks", "all"); self.compact_mode.addItem("Track escolhida define os buracos", "selected"); self.compact_track = QComboBox(); self.compact_info = QToolButton(); self.compact_info.setText("ⓘ"); self.compact_info.setToolTip("Clique para ver a diferença entre os modos."); mode_wrap = QWidget(); mode_layout = QHBoxLayout(mode_wrap); mode_layout.setContentsMargins(0, 0, 0, 0); mode_layout.addWidget(self.compact_mode); mode_layout.addWidget(self.compact_info); self.compact_mode_label = QLabel(); self.compact_track_label = QLabel(); compact_form.addRow(self.compact_mode_label, mode_wrap); compact_form.addRow(self.compact_track_label, self.compact_track); self.compact_info.clicked.connect(self.show_compaction_help); layout.addWidget(compact_box)
         self.settings.hide(); self.compact_box.hide(); self.advanced_btn.toggled.connect(lambda visible: (self.settings.setVisible(visible), self.compact_box.setVisible(visible)))
         stats = QGroupBox(); stats_form = QFormLayout(stats); self.stats_box = stats; self.original_label = QLabel("—"); self.current_label = QLabel("—"); self.removed_label = QLabel("—"); self.percent_label = QLabel("—"); self.operation_label = QLabel("—"); self.original_text = QLabel(); self.current_text = QLabel(); self.removed_text = QLabel(); self.percent_text = QLabel(); self.operation_text = QLabel(); stats_form.addRow(self.original_text, self.original_label); stats_form.addRow(self.current_text, self.current_label); stats_form.addRow(self.removed_text, self.removed_label); stats_form.addRow(self.percent_text, self.percent_label); stats_form.addRow(self.operation_text, self.operation_label); layout.addWidget(stats)
         self.status = QLabel("Os vídeos e áudios permanecem referenciados pelo OTIO; a ferramenta não renderiza arquivos intermediários."); layout.addWidget(self.status); self.setCentralWidget(root)
-        self.open_btn.clicked.connect(self.open); self.save_btn.clicked.connect(self.save); self.preview_btn.clicked.connect(self.preview); self.compact_btn.clicked.connect(self.compact); self.analyze_btn.clicked.connect(self.analyze); self.language.currentIndexChanged.connect(lambda index: self.set_language(self.language.itemData(index))); self.set_language("pt")
+        self.open_btn.clicked.connect(self.open); self.save_btn.clicked.connect(self.save); self.preview_btn.clicked.connect(self.preview); self.compact_btn.clicked.connect(self.compact); self.analyze_btn.clicked.connect(self.analyze); self.protect_speech.toggled.connect(self.protect_speech_changed); self.language.currentIndexChanged.connect(lambda index: self.set_language(self.language.itemData(index))); self.set_language("pt")
+
+    def protect_speech_changed(self, checked):
+        if self.review_dialog is not None and not self.review_dialog._busy:
+            self.review_dialog.protect_speech_box.setChecked(checked)
+            self.review_dialog.invalidate()
 
     def set_language(self, language):
         self.lang = language
         if language == "en":
-            self.open_btn.setText("Open .otio"); self.save_btn.setText("Export .otio"); self.preview_btn.setText("Preview cuts"); self.compact_btn.setText("Compact timeline"); self.analyze_btn.setText("Remove silence"); self.advanced_btn.setText("Show advanced options"); self.title.setText("Open a timeline exported by Kdenlive"); self.table.setHorizontalHeaderLabels(["Track", "Type", "Group", "Analyze"]); self.settings.setTitle("Detection"); self.threshold_label.setText("Threshold (dB)"); self.minimum_label.setText("Minimum pause (s)"); self.padding_label.setText("Protection (ms)"); self.compact_box.setTitle("Compaction"); self.compact_mode.setItemText(0, "Video defines gaps"); self.compact_mode.setItemText(1, "Only gaps empty on every track"); self.compact_mode.setItemText(2, "Selected track defines gaps"); self.compact_mode_label.setText("Compaction mode"); self.compact_track_label.setText("Reference track"); self.original_text.setText("Original duration"); self.current_text.setText("Current duration"); self.removed_text.setText("Time removed"); self.percent_text.setText("Reduction"); self.operation_text.setText("Intervals removed")
+            self.open_btn.setText("Open .otio"); self.save_btn.setText("Export .otio"); self.preview_btn.setText("Preview cuts"); self.compact_btn.setText("Compact timeline"); self.analyze_btn.setText("Remove silence"); self.advanced_btn.setText("Show advanced options"); self.title.setText("Open a timeline exported by Kdenlive"); self.table.setHorizontalHeaderLabels(["Track", "Type", "Group", "Analyze"]); self.settings.setTitle("Detection"); self.threshold_label.setText("Threshold (dB)"); self.minimum_label.setText("Minimum pause (s)"); self.padding_label.setText("Protection (ms)"); self.protect_speech.setText("Protect speech (VAD)"); self.compact_box.setTitle("Compaction"); self.compact_mode.setItemText(0, "Video defines gaps"); self.compact_mode.setItemText(1, "Only gaps empty on every track"); self.compact_mode.setItemText(2, "Selected track defines gaps"); self.compact_mode_label.setText("Compaction mode"); self.compact_track_label.setText("Reference track"); self.original_text.setText("Original duration"); self.current_text.setText("Current duration"); self.removed_text.setText("Time removed"); self.percent_text.setText("Reduction"); self.operation_text.setText("Intervals removed")
         else:
-            self.open_btn.setText("Abrir .otio"); self.save_btn.setText("Exportar .otio"); self.preview_btn.setText("Pré-visualizar cortes"); self.compact_btn.setText("Compactar timeline"); self.analyze_btn.setText("Remover silêncios"); self.advanced_btn.setText("Mostrar opções avançadas"); self.title.setText("Abra uma timeline exportada pelo Kdenlive"); self.table.setHorizontalHeaderLabels(["Track", "Tipo", "Grupo", "Analisar"]); self.settings.setTitle("Detecção"); self.threshold_label.setText("Limite (dB)"); self.minimum_label.setText("Pausa mínima (s)"); self.padding_label.setText("Proteção (ms)"); self.compact_box.setTitle("Compactação"); self.compact_mode.setItemText(0, "Vídeo define os buracos"); self.compact_mode.setItemText(1, "Só gaps vazios em todas as tracks"); self.compact_mode.setItemText(2, "Track escolhida define os buracos"); self.compact_mode_label.setText("Modo de compactação"); self.compact_track_label.setText("Track de referência"); self.original_text.setText("Duração original"); self.current_text.setText("Duração atual"); self.removed_text.setText("Tempo removido"); self.percent_text.setText("Redução"); self.operation_text.setText("Intervalos removidos")
+            self.open_btn.setText("Abrir .otio"); self.save_btn.setText("Exportar .otio"); self.preview_btn.setText("Pré-visualizar cortes"); self.compact_btn.setText("Compactar timeline"); self.analyze_btn.setText("Remover silêncios"); self.advanced_btn.setText("Mostrar opções avançadas"); self.title.setText("Abra uma timeline exportada pelo Kdenlive"); self.table.setHorizontalHeaderLabels(["Track", "Tipo", "Grupo", "Analisar"]); self.settings.setTitle("Detecção"); self.threshold_label.setText("Limite (dB)"); self.minimum_label.setText("Pausa mínima (s)"); self.padding_label.setText("Proteção (ms)"); self.protect_speech.setText("Proteger fala (VAD)"); self.compact_box.setTitle("Compactação"); self.compact_mode.setItemText(0, "Vídeo define os buracos"); self.compact_mode.setItemText(1, "Só gaps vazios em todas as tracks"); self.compact_mode.setItemText(2, "Track escolhida define os buracos"); self.compact_mode_label.setText("Modo de compactação"); self.compact_track_label.setText("Track de referência"); self.original_text.setText("Duração original"); self.current_text.setText("Duração atual"); self.removed_text.setText("Tempo removido"); self.percent_text.setText("Redução"); self.operation_text.setText("Intervalos removidos")
 
         if self.timeline is None:
             self.status.setText(
@@ -389,7 +401,8 @@ class MainWindow(QMainWindow):
             return
         dialog = AudioReviewDialog(self.timeline, assignments, self.threshold.value(),
                                    self.minimum.value(), self.padding.value() / 1000,
-                                   collect_group_cuts, apply_group_cuts, media_path, self.lang, self)
+                                   collect_group_cuts, apply_group_cuts, media_path, self.lang, self,
+                                   self.protect_speech.isChecked())
         self.review_dialog = dialog
         dialog.finished.connect(self.review_closed)
         if dialog.exec() == AudioReviewDialog.Accepted:
