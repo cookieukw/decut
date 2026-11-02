@@ -26,6 +26,7 @@ from audio_review import AudioReviewDialog
 from app_version import __version__
 from media_process import managed_process
 from speech_vad import voice_segments, remove_voice_from_silences
+from kdenlive_adapter import read_kdenlive
 
 
 def seconds(value) -> float:
@@ -364,10 +365,10 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Modos de compactação", text)
 
     def open(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Abrir OpenTimelineIO", "", "OpenTimelineIO (*.otio *.json);;Todos (*.*)")
+        path, _ = QFileDialog.getOpenFileName(self, "Abrir timeline", "", "Timelines (*.otio *.kdenlive *.json);;Todos (*.*)")
         if not path: return
         try:
-            self.timeline = otio.adapters.read_from_file(path); self.path = path; self.title.setText(f"{self.timeline.name or Path(path).stem} · {len(self.timeline.tracks)} tracks"); self.populate(); self.save_btn.setEnabled(True); self.preview_btn.setEnabled(True); self.auto_btn.setEnabled(True); self.compact_btn.setEnabled(True); self.analyze_btn.setEnabled(self.table.rowCount() > 0); self.status.setText("Assign the same group to video and audio tracks that should be cut together." if self.lang == "en" else "Defina o mesmo grupo para o vídeo e o áudio que devem cortar juntos.")
+            self.timeline = read_kdenlive(path) if path.lower().endswith(".kdenlive") else otio.adapters.read_from_file(path); self.path = path; self.title.setText(f"{self.timeline.name or Path(path).stem} · {len(self.timeline.tracks)} tracks"); self.populate(); self.save_btn.setEnabled(True); self.preview_btn.setEnabled(True); self.auto_btn.setEnabled(True); self.compact_btn.setEnabled(True); self.analyze_btn.setEnabled(self.table.rowCount() > 0); self.status.setText("Assign the same group to video and audio tracks that should be cut together." if self.lang == "en" else "Defina o mesmo grupo para o vídeo e o áudio que devem cortar juntos.")
             self.original_duration = seconds(self.timeline.duration()); self.last_operation_count = 0; self.update_stats()
         except Exception as error: QMessageBox.critical(self, "Falha ao abrir OTIO", str(error))
 

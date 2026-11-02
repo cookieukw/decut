@@ -10,7 +10,7 @@ Perform synchronization in Kdenlive first. Keep source files at the locations re
 
 ## Opening and assigning tracks
 
-Choose **Open .otio** and select your Kdenlive export. The table displays the tracks, their OTIO type, group and Analyze checkbox.
+Choose **Open .otio** and select your Kdenlive export. You can also open a `.kdenlive` project directly when you need **Compact timeline** to use the actual gaps shown by Kdenlive. The adapter reads ordinary playlists and converts `<blank>` items into OTIO `Gap` objects. The table displays tracks, type, group and Analyze checkbox.
 
 ### Groups
 
