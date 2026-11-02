@@ -33,6 +33,9 @@ class SampleMathTests(QtTestCase):
         start, duration = sample_window(10, 20, 19.99, .6)
         self.assertAlmostEqual(start, 19.4)
         self.assertEqual(duration, .6)
+        start, duration = sample_window(10, 20, 10.01, .01)
+        self.assertAlmostEqual(start, 10.005)
+        self.assertEqual(duration, .01)
 
     def test_needle_click_keeps_time_mapping(self):
         app = QApplication.instance() or QApplication([])

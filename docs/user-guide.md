@@ -70,6 +70,12 @@ Applying again in a new review works on the already-edited in-memory timeline. R
 
 Waveform data is read as small FFmpeg PCM buckets, with a capped number of cached peaks per clip. It is not a full-resolution audio-editing buffer. Short audition is available through the playback controls described below.
 
+### Waveform cache
+
+Waveforms are cached on disk under `~/.cache/decut/waveforms` (or `$XDG_CACHE_HOME/decut/waveforms`). The key includes the absolute media path, file size, modification timestamp, source start, source duration and requested resolution. Reopening a timeline or recalculating proposals therefore reuses the cached peaks instead of invoking FFmpeg again. Changing only thresholds, samples, protection, checkboxes, frame position or display gain does not invalidate the waveform.
+
+If the source file changes, its size or modification timestamp changes and the old entry is ignored automatically. Cache errors are non-fatal. Delete the `waveforms` directory manually if you want to reclaim disk space or force a complete rebuild.
+
 ### Navigation
 
 | Action | Control |
@@ -141,6 +147,8 @@ Moving the needle, changing the window, editing settings or choosing another gro
 6. Use **Clear samples and proposals** to reset the selected group's profiles and accumulated proposals. Manual protection is retained; re-enable protected cuts in the list if desired.
 
 Matching compares 100 ms mono windows by RMS/peak level, zero-crossing rate and a first-difference energy measure of brightness. It is not exact waveform matching, transcription, word recognition or VAD. Short, quiet speech can resemble noise; review all matches.
+
+If a cleaned/denoised recording produces no matches, the VAD speech guard may have protected every candidate. The review reports this explicitly. Try **Broader** similarity first; if the audio has no background voice risk, disable **Protect speech (VAD)** and recalculate. The measured sample itself remains a candidate and can also be added directly with **Remove this sample**.
 
 The similarity choices scale permitted feature differences:
 

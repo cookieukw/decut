@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from audio_tools import measure_noise, sample_window, waveform_peaks
+from waveform_cache import load_waveform, save_waveform
 from media_process import JobControl, AnalysisCancelled
 from noise_matching import learn_profile, find_similar_pauses, merge_intervals
 from timeline_time import timeline_frame_rate, frame_from_seconds, seconds_from_frame, last_frame_position
@@ -121,16 +122,25 @@ class SamplingWaveform(QWidget):
                 continue
             clip_rect = QRectF(clip_left, 4, clip_right - clip_left, bottom - 4)
             painter.fillRect(clip_rect, QColor("#164b3d"))
+            adjacent = any(
+                previous is not segment and previous["start"] < segment["start"]
+                and abs(previous["start"] + previous["duration"] - segment["start"]) < .001
+                for previous in self.segments)
             painter.setPen(QPen(QColor("#377b65"), 1))
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(clip_rect)
+            # A cut turns one source clip into adjacent OTIO clips. Do not
+            # draw a distracting seam for those; retain boundaries only where
+            # there is a real timeline gap/take separation.
+            if not adjacent:
+                painter.drawRect(clip_rect)
             painter.setPen(QPen(QColor("#286451"), 1))
             painter.drawLine(int(clip_left), int(mid), int(clip_right), int(mid))
-            painter.setPen(QColor("#d4e4dc"))
-            name = segment.get("name") or Path(segment.get("path", "audio")).name
-            label = painter.fontMetrics().elidedText(name, Qt.ElideRight, max(0, int(clip_right - clip_left - 12)))
-            painter.drawText(QRectF(clip_left + 6, 5, max(0, clip_right - clip_left - 12), 18),
-                             Qt.AlignLeft | Qt.AlignVCenter, label)
+            if not adjacent:
+                painter.setPen(QColor("#d4e4dc"))
+                name = segment.get("name") or Path(segment.get("path", "audio")).name
+                label = painter.fontMetrics().elidedText(name, Qt.ElideRight, max(0, int(clip_right - clip_left - 12)))
+                painter.drawText(QRectF(clip_left + 6, 5, max(0, clip_right - clip_left - 12), 18),
+                                 Qt.AlignLeft | Qt.AlignVCenter, label)
             peaks = segment["peaks"]
             step = segment["duration"] / max(1, len(peaks))
             if step <= 0:
@@ -432,8 +442,9 @@ class AudioReviewDialog(QDialog):
         form.addRow(navigation)
         sampling = QHBoxLayout()
         self.window = QDoubleSpinBox()
-        self.window.setRange(.1, 2)
-        self.window.setSingleStep(.1)
+        self.window.setDecimals(3)
+        self.window.setRange(.01, 2)
+        self.window.setSingleStep(.01)
         self.window.setValue(.6)
         self.window.setSuffix(" s")
         self.sample_btn = QPushButton(self.tr_text("Medir aqui", "Sample here"))
@@ -780,7 +791,11 @@ class AudioReviewDialog(QDialog):
                         key = (path, source_start, duration)
                         if key not in self.wave_cache:
                             bins = max(4096, min(200000, math.ceil(duration * 20)))
-                            self.wave_cache[key] = waveform_peaks(path, source_start, duration, bins, control)
+                            cached = load_waveform(path, source_start, duration, bins)
+                            if cached is None:
+                                cached = waveform_peaks(path, source_start, duration, bins, control)
+                                save_waveform(path, source_start, duration, bins, cached)
+                            self.wave_cache[key] = cached
                         segments.append({"start": cursor, "duration": duration, "source_start": source_start,
                                          "path": path, "peaks": self.wave_cache[key]})
                     cursor += duration
@@ -803,6 +818,10 @@ class AudioReviewDialog(QDialog):
             self.cuts[group] = [(start, end) for start, end, enabled in rows if enabled]
         self.reference_changed()
         self.review_tabs.setCurrentIndex(0)
+        if self.mode.currentData() == "samples" and self.noise_profiles.get(self.group()) and not any(self.cuts.values()):
+            self.summary.setText(self.tr_text(
+                "Nenhum trecho semelhante ficou liberado. Se o áudio foi limpo/zerado, desative Proteger fala (VAD) ou escolha Mais ampla e recalcule.",
+                "No similar region was left eligible. If this audio was denoised/zeroed, disable Protect speech (VAD) or choose Broader and recalculate."))
 
     def reference_changed(self):
         self.stop_audio()
@@ -1115,6 +1134,14 @@ class AudioReviewDialog(QDialog):
                         if s["start"] <= position < s["start"] + s["duration"]), None)
         start = (segment["start"] + sample.start - segment["source_start"]
                  if segment else max(0, position - sample.duration / 2))
+        if self.mode.currentData() == "samples":
+            # The selected reference window is itself a reviewed candidate.
+            # Similar matches are added on Recalculate; this one is never lost.
+            selected_interval = (start, start + sample.duration)
+            self.incremental_cuts[group] = merge_intervals(
+                self.incremental_cuts.get(group, []) + [selected_interval])
+            self.cuts[group] = merge_intervals(self.cuts.get(group, []) + [selected_interval])
+            self.review_rows[group] = [(a, b, True) for a, b in self.cuts[group]]
         number = max((record["number"] for record in self.sample_records
                       if record["group"] == group and record["mode"] == self.mode.currentData()), default=0) + 1
         self.sample_records.append({"group": group, "mode": self.mode.currentData(), "number": number,
@@ -1135,6 +1162,10 @@ class AudioReviewDialog(QDialog):
                 f"Sample {len(self.noise_profiles[group])} added at {tc(position)}: peak {sample.peak_db:.1f} dB. Recalculate to find regions with similar level and texture."))
         self._dirty = True
         self.apply_btn.setEnabled(False)
+        if self.mode.currentData() == "samples":
+            self._dirty = False
+            self.load_intervals()
+            self.apply_btn.setEnabled(True)
         self.summary.setText(self.tr_text(
             "Amostra medida. Clique em Recalcular prévia para atualizar as propostas.",
             "Sample measured. Click Recalculate preview to update proposals."))

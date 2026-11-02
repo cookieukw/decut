@@ -71,8 +71,8 @@ def threshold_from_peak(peak_db, headroom=3):
 
 def measure_noise(path, start, duration, control=None):
     """Measure a short native-rate sample; use peak rather than RMS for silencedetect."""
-    if start < 0 or not 0.05 <= duration <= 2.0:
-        raise ValueError("The noise sample must cover 0.05 to 2 seconds inside a clip.")
+    if start < 0 or not 0.01 <= duration <= 2.0:
+        raise ValueError("The noise sample must cover 0.01 to 2 seconds inside a clip.")
     command = [ffmpeg_path(), "-hide_banner", "-nostats", "-nostdin",
                "-threads", "1", "-filter_threads", "1",
                "-ss", str(start), "-i", path, "-t", str(duration),
@@ -97,7 +97,7 @@ def measure_noise(path, start, duration, control=None):
 def sample_window(clip_start, clip_end, position, window):
     """Clamp a cursor sample to its clip, never crossing an edit or gap."""
     length = min(window, clip_end - clip_start)
-    if length < 0.05:
+    if length < 0.01:
         raise ValueError("This clip is too short for a noise sample.")
     start = min(max(position - length / 2, clip_start), clip_end - length)
     return start, length

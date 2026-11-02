@@ -34,9 +34,11 @@ The screenshots use a real **60-second excerpt** for readability. Waveforms, mea
 - Filled, linear waveforms with take boundaries, zoom, pan and display-only gain.
 - Synchronized seconds/frame needle positioning and one-frame stepping.
 - Local audio audition from the needle or the exact sampling window, with preview-only volume.
+- Persistent waveform cache in the user's cache directory, invalidated when source media changes.
 - Manual noise sampling: moving the needle never starts calibration or creates a cut.
 - Optional incremental noise-profile matching to accumulate similar regions from multiple samples.
 - Optional WebRTC VAD speech guard that protects possible voice from automatic cuts.
+- Clear no-match feedback when VAD protects all matches in aggressively denoised audio.
 - Numbered blue sample markers and a saved-samples table with time, duration and measured levels.
 - Separate **Sample here**, **Recalculate preview** and **Apply reviewed cuts** actions.
 - Editable cut boundaries, individual checkboxes and **Keep this region** protection.

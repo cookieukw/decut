@@ -5,6 +5,7 @@
 - Linked seconds/frame needle fields, timeline FPS detection with a navigation override, exact one-frame buttons and Ctrl-arrow stepping.
 - Short Qt Multimedia audition from the needle or sampling window, source-range-aware seek/stop, preview volume and a separate playback cursor.
 - Navigation and playback tests, including passive controls that never start analysis or cut media.
+- Explicit feedback/recovery guidance when VAD protects all incremental similarity matches.
 - Optional low-memory WebRTC VAD speech guard enabled by default in the desktop UI.
 
 ## 1.0.0 · 2026-11-01

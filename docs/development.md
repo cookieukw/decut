@@ -19,6 +19,7 @@ app_version.py          Shared application version
 otio_cutter.py          Main window, OTIO cut/compaction pipeline, export
 audio_review.py         Review dialog, waveform drawing, manual calibration UI
 audio_tools.py          Streamed PCM peaks and short noise measurements
+waveform_cache.py       Versioned persistent waveform cache
 audio_audition.py       Qt Multimedia playback and source-range audition mapping
 timeline_time.py        Timeline FPS detection and seconds/frame conversion
 media_process.py        Cancellation and FFmpeg subprocess ownership
@@ -70,6 +71,8 @@ When enabled, `speech_vad.voice_segments` streams mono 16 kHz signed PCM in 30 m
 ### Waveforms and calibration
 
 FFmpeg emits mono 8 kHz, signed 16-bit PCM for the display. `waveform_peaks` retains maxima per bucket rather than a full recording. The review requests a capped number of display peaks per clip and draws a pixel-aggregated linear envelope. This is a visual summary, not sample-accurate waveform editing or separate stereo visualization.
+
+`waveform_cache.py` stores compressed pickled peak lists under the platform cache root. Its key includes `CACHE_VERSION`, absolute path, file size, `st_mtime_ns`, source range and bin count. Writes use a temporary file and atomic replace; malformed/stale/unwritable entries are ignored. Cache keys are checked before launching FFmpeg, and in-memory `AudioReviewDialog.wave_cache` avoids duplicate lookups during one review.
 
 Calibration uses a separate, short native-rate FFmpeg `volumedetect` job. Its peak plus 3 dB supplies the proposed threshold. Moving the needle never starts a process. **Sample here** changes the threshold; **Recalculate preview** changes proposals; **Apply reviewed cuts** changes the in-memory timeline.
 
