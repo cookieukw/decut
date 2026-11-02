@@ -14,16 +14,26 @@ def read_kdenlive(path):
     profile = root.find("profile")
     fps = float(profile.get("frame_rate_num", 60)) / float(profile.get("frame_rate_den", 1)) if profile is not None else 60.0
     producers = {}
+    producer_video = {}
     for producer in list(root.findall("producer")) + list(root.findall("chain")):
         resource = next((p.text for p in producer.findall("property") if p.get("name") == "resource"), None)
         if resource and resource not in ("black", "color"):
             producers[producer.get("id")] = resource
+            video_index = next((p.text for p in producer.findall("property") if p.get("name") == "video_index"), "-1")
+            producer_video[producer.get("id")] = video_index not in (None, "-1")
     playlists = {playlist.get("id"): playlist for playlist in root.findall("playlist")}
     timeline = otio.schema.Timeline(name=Path(path).stem)
-    for playlist_id, kind, label in (("playlist0", "Video", "video"), ("playlist2", "Audio", "audio 1"), ("playlist4", "Audio", "audio 2")):
-        playlist = playlists.get(playlist_id)
-        if playlist is None:
+    ordered_playlists = []
+    for playlist_id, playlist in playlists.items():
+        first_entry = next((item for item in playlist if item.tag == "entry"), None)
+        if first_entry is None or first_entry.get("producer") not in producers:
             continue
+        is_video = producer_video.get(first_entry.get("producer"), False)
+        kind = "Video" if is_video else "Audio"
+        label = "video" if is_video else f"audio {sum(1 for _, existing_kind, _ in ordered_playlists if existing_kind == 'Audio') + 1}"
+        ordered_playlists.append((playlist_id, kind, label))
+    for playlist_id, kind, label in ordered_playlists:
+        playlist = playlists[playlist_id]
         track = otio.schema.Track(name=label, kind=kind)
         for item in playlist:
             if item.tag == "blank":
