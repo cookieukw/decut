@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse
 
 import opentimelineio as otio
 from PySide6.QtCore import Qt, QThread, Signal, QSettings, QTimer, QEvent
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox,
@@ -31,6 +32,11 @@ from kdenlive_adapter import read_kdenlive
 
 def seconds(value) -> float:
     return value.to_seconds() if hasattr(value, "to_seconds") else float(value)
+
+
+def count_timeline_gaps(timeline):
+    return sum(1 for track in timeline.tracks for child in track
+               if isinstance(child, otio.schema.Gap) and seconds(child.duration()) > .001)
 
 
 def timecode(value: float) -> str:
@@ -332,7 +338,7 @@ class MainWindow(QMainWindow):
         self.settings.hide(); self.compact_box.hide(); self.advanced_btn.toggled.connect(lambda visible: (self.settings.setVisible(visible), self.compact_box.setVisible(visible)))
         stats = QGroupBox(); stats_form = QFormLayout(stats); self.stats_box = stats; self.original_label = QLabel("—"); self.current_label = QLabel("—"); self.removed_label = QLabel("—"); self.percent_label = QLabel("—"); self.operation_label = QLabel("—"); self.original_text = QLabel(); self.current_text = QLabel(); self.removed_text = QLabel(); self.percent_text = QLabel(); self.operation_text = QLabel(); stats_form.addRow(self.original_text, self.original_label); stats_form.addRow(self.current_text, self.current_label); stats_form.addRow(self.removed_text, self.removed_label); stats_form.addRow(self.percent_text, self.percent_label); stats_form.addRow(self.operation_text, self.operation_label); layout.addWidget(stats)
         self.status = QLabel("Os vídeos e áudios permanecem referenciados pelo OTIO; a ferramenta não renderiza arquivos intermediários."); layout.addWidget(self.status); self.setCentralWidget(root)
-        self.open_btn.clicked.connect(self.open); self.save_btn.clicked.connect(self.save); self.preview_btn.clicked.connect(self.preview); self.auto_btn.clicked.connect(self.auto_remove); self.compact_btn.clicked.connect(self.compact); self.analyze_btn.clicked.connect(self.analyze); self.protect_speech.toggled.connect(self.protect_speech_changed); self.language.currentIndexChanged.connect(lambda index: self.set_language(self.language.itemData(index))); self.set_language("pt")
+        self.open_btn.clicked.connect(self.open); self.save_btn.clicked.connect(self.save); self.preview_btn.clicked.connect(self.preview); self.auto_btn.clicked.connect(self.auto_remove); self.compact_btn.clicked.connect(self.compact); self.analyze_btn.clicked.connect(self.analyze); self.protect_speech.toggled.connect(self.protect_speech_changed); self.language.currentIndexChanged.connect(lambda index: self.set_language(self.language.itemData(index))); self.set_language("pt"); self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self); self.save_shortcut.activated.connect(self.save)
 
     def protect_speech_changed(self, checked):
         if self.review_dialog is not None and not self.review_dialog._busy:
@@ -483,7 +489,7 @@ class MainWindow(QMainWindow):
     def finished(self, timeline, result):
         self.analyze_btn.setEnabled(True); self.auto_btn.setEnabled(self.timeline is not None)
         if timeline is None: QMessageBox.critical(self, "Analysis failed" if self.lang == "en" else "Falha na análise", str(result)); return
-        self.timeline = timeline; self.last_operation_count = sum(result.values()); self.update_stats(); self.status.setText(("Cuts applied by group: " + (", ".join(f"{key}: {value}" for key, value in result.items()) or "no silence found")) if self.lang == "en" else ("Cortes aplicados em grupos: " + (", ".join(f"{key}: {value}" for key, value in result.items()) or "nenhum silêncio encontrado"))); self.save_btn.setEnabled(True)
+        self.timeline = timeline; self.last_operation_count = sum(result.values()); self.update_stats(); gaps = count_timeline_gaps(timeline); self.status.setText((("Cuts applied by group: " + (", ".join(f"{key}: {value}" for key, value in result.items()) or "no silence found") + f" · {gaps} timeline gaps remaining · press Ctrl+S to export") if self.lang == "en" else ("Cortes aplicados em grupos: " + (", ".join(f"{key}: {value}" for key, value in result.items()) or "nenhum silêncio encontrado") + f" · {gaps} gaps restantes · pressione Ctrl+S para exportar"))); self.save_btn.setEnabled(True)
 
     def save(self):
         if not self.timeline: return
@@ -509,7 +515,8 @@ class MainWindow(QMainWindow):
                 return
             self.preferences.setValue("export/last_directory", str(Path(path).resolve().parent))
             self.preferences.sync()
-            self.status.setText(f"Exported: {path}" if self.lang == "en" else f"Exportado: {path}")
+            gaps = count_timeline_gaps(self.timeline)
+            self.status.setText((f"Exported: {path} · {gaps} gaps" if self.lang == "en" else f"Exportado: {path} · {gaps} gaps"))
 
     def closeEvent(self, event):
         if self.review_dialog is not None:

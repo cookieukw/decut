@@ -5,7 +5,7 @@ from pathlib import Path
 
 import opentimelineio as otio
 from PySide6.QtCore import Qt, QThread, Signal, QRectF, QTimer, QElapsedTimer, Slot, QSignalBlocker
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
@@ -598,6 +598,15 @@ class AudioReviewDialog(QDialog):
         self.reset_samples_btn.clicked.connect(self.reset_samples)
         self.cancel_btn.clicked.connect(self.reject)
         self.apply_btn.clicked.connect(self.apply_review)
+        self.shortcuts = []
+        for sequence, callback in [
+            ("Ctrl+Return", self.apply_review), ("Ctrl+Enter", self.apply_review),
+            ("R", self.recalculate.click), ("M", self.sample_btn.click),
+            ("K", self.preserve_selection), ("Space", self.listen_audio),
+        ]:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(callback)
+            self.shortcuts.append(shortcut)
         self.threshold.valueChanged.connect(self.invalidate)
         self.minimum.valueChanged.connect(self.invalidate)
         self.padding.valueChanged.connect(self.invalidate)
@@ -898,6 +907,14 @@ class AudioReviewDialog(QDialog):
             self.summary.setText(self.tr_text(
                 "Nenhuma waveform foi carregada. Escolha uma track de áudio com clips.",
                 "No waveform was loaded. Choose an audio track containing clips."))
+        elif not any(self.cuts.values()):
+            self.summary.setText(self.tr_text(
+                "Nenhum corte final elegível. O VAD pode ter protegido os candidatos; desative Proteger fala e recalcule para comparar.",
+                "No eligible final cuts. VAD may have protected the candidates; disable Protect speech and recalculate to compare."))
+        elif self.protect_speech_box.isChecked():
+            self.measurement.setText(self.tr_text(
+                "VAD ativo: regiões com possível fala foram preservadas. Desative-o apenas se aceitar cortes baseados só em volume.",
+                "VAD active: possible speech regions were preserved. Disable it only if amplitude-only cuts are acceptable."))
         if self.mode.currentData() == "samples" and self.noise_profiles.get(self.group()) and not any(self.cuts.values()):
             self.summary.setText(self.tr_text(
                 "Nenhum trecho semelhante ficou liberado. Se o áudio foi limpo/zerado, desative Proteger fala (VAD) ou escolha Mais ampla e recalcule.",
